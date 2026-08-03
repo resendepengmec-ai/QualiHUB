@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>QualiHUB — Entrar</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="login-wrap">
+    <div class="login-card">
+      <div class="mark">QH</div>
+      <h1>QualiHUB</h1>
+      <p class="muted" style="margin:.4rem 0 0">Gestão de qualidade de alimentos</p>
+
+      <button class="btn primary g-btn" id="btnGoogle">Entrar com Google</button>
+      <p class="muted" id="msg" style="font-size:.82rem;margin-top:14px"></p>
+
+      <details class="login-alt" id="alt">
+        <summary>Configuração (primeiro acesso)</summary>
+        <label class="field" style="margin-top:12px">
+          <span>URL do backend (Render)</span>
+          <input id="apiUrl" placeholder="https://qualihub-backend.onrender.com">
+        </label>
+        <label class="field">
+          <span>Google Client ID</span>
+          <input id="clientId" placeholder="xxxxx.apps.googleusercontent.com">
+        </label>
+        <button class="btn sm" id="btnSalvarCfg">Salvar e continuar</button>
+        <p class="muted" style="font-size:.75rem;margin-top:10px">
+          O ideal é definir <code>GOOGLE_CLIENT_ID</code> no backend; aí esta tela nem aparece.
+          O primeiro e-mail a entrar vira o administrador master.
+        </p>
+      </details>
+    </div>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="api-client.js"></script>
+  <script>
+    const msg = document.getElementById('msg');
+    // Já logado? vai direto pro app.
+    if (getCurrentUser()) location.href = 'app.html';
+
+    // Se não houver Client ID disponível, abre o painel de configuração.
+    (async () => {
+      const cid = await fetchClientId();
+      if (!cid) document.getElementById('alt').open = true;
+      // Preenche campos com o que já estiver salvo.
+      document.getElementById('apiUrl').value   = localStorage.getItem('quali_api_url') || (window.QUALI_API || '');
+      document.getElementById('clientId').value = localStorage.getItem('quali_client_id') || '';
+    })();
+
+    document.getElementById('btnGoogle').onclick = async () => {
+      msg.textContent = '';
+      try { await startGoogleLogin(); }
+      catch (e) { msg.textContent = e.message; document.getElementById('alt').open = true; }
+    };
+
+    document.getElementById('btnSalvarCfg').onclick = () => {
+      const url = document.getElementById('apiUrl').value.trim().replace(/\/$/, '');
+      const cid = document.getElementById('clientId').value.trim();
+      if (url) localStorage.setItem('quali_api_url', url);
+      if (cid) localStorage.setItem('quali_client_id', cid);
+      msg.textContent = 'Configuração salva. Clique em “Entrar com Google”.';
+    };
+  </script>
+</body>
+</html>

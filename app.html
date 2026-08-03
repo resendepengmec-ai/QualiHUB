@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>QualiHUB</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="appbar">
+    <div class="brand"><span class="mark">QH</span> QualiHUB</div>
+    <div class="contrato-select">
+      <label for="selContrato">Contrato</label>
+      <select id="selContrato"></select>
+    </div>
+    <div class="spacer"></div>
+    <div class="who" id="who"></div>
+    <button class="btn sm ghost" id="btnSair">Sair</button>
+  </header>
+
+  <nav class="nav" id="nav"></nav>
+  <main class="wrap" id="view"></main>
+
+  <div class="modal-bg" id="modalBg"><div class="modal" id="modal"></div></div>
+  <div class="toast" id="toast"></div>
+
+  <script src="config.js"></script>
+  <script src="api-client.js"></script>
+  <script>
+  // ── infra de UI ───────────────────────────────────────────────
+  const $ = (s, r = document) => r.querySelector(s);
+  const view = $('#view');
+  let contratos = [];   // lista completa (do backend, já filtrada por acesso)
+  let membrosCache = {};
+
+  function toast(msg, err = false) {
+    const t = $('#toast'); t.textContent = msg; t.className = 'toast show' + (err ? ' err' : '');
+    setTimeout(() => t.className = 'toast', 2600);
+  }
+  function openModal(html) { $('#modal').innerHTML = html; $('#modalBg').classList.add('show'); }
+  function closeModal() { $('#modalBg').classList.remove('show'); }
+  $('#modalBg').addEventListener('click', e => { if (e.target === $('#modalBg')) closeModal(); });
+  const fmtDate = d => d ? new Date(d + (d.length <= 10 ? 'T00:00:00' : '')).toLocaleDateString('pt-BR') : '—';
+
+  function isAdministradorAnywhere() {
+    if (isMaster()) return true;
+    return getAcessos().some(a => a.papel === 'administrador');
+  }
+
+  // ── boot ──────────────────────────────────────────────────────
+  (async () => {
+    if (!requireSession()) return;
+    try { await refreshMe(); }
+    catch (e) { return logout(); }
+
+    const u = getCurrentUser();
+    $('#who').innerHTML =
+      (u.picture ? `<img src="${esc(u.picture)}" alt="">` : '') +
+      `<span>${esc(u.name || u.email)}${isMaster() ? ' · <strong>Master</strong>' : ''}</span>`;
+    $('#btnSair').onclick = () => logout();
+
+    await carregarContratos();
+    montarNav();
+    irPara(location.hash.replace('#', '') || 'dashboard');
+  })();
+
+  async function carregarContratos() {
+    contratos = await DB.getContratos();
+    const sel = $('#selContrato');
+    if (!contratos.length) {
+      sel.innerHTML = '<option value="">— sem contratos —</option>';
+    } else {
+      const atual = getContratoAtual() && contratos.some(c => c.id === getContratoAtual())
+        ? getContratoAtual() : contratos[0].id;
+      setContratoAtual(atual);
+      sel.innerHTML = contratos.map(c =>
+        `<option value="${c.id}">${esc(c.numero)}${c.objeto ? ' — ' + esc(c.objeto) : ''}</option>`).join('');
+      sel.value = atual;
+    }
+    sel.onchange = () => { setContratoAtual(sel.value); irPara(active); };
+  }
+
+  // ── navegação ─────────────────────────────────────────────────
+  const TABS = [
+    { id: 'dashboard',   label: 'Dashboard' },
+    { id: 'ocorrencias', label: 'Ocorrências' },
+    { id: 'cadastro',    label: 'Cadastro', when: isAdministradorAnywhere },
+  ];
+  let active = 'dashboard';
+  function montarNav() {
+    $('#nav').innerHTML = TABS.filter(t => !t.when || t.when())
+      .map(t => `<button data-tab="${t.id}">${t.label}</button>`).join('');
+    $('#nav').querySelectorAll('button').forEach(b => b.onclick = () => irPara(b.dataset.tab));
+  }
+  function irPara(tab) {
+    active = tab; location.hash = tab;
+    $('#nav').querySelectorAll('button').forEach(b => b.setAttribute('aria-current', String(b.dataset.tab === tab)));
+    ({ dashboard: renderDashboard, ocorrencias: renderOcorrencias, cadastro: renderCadastro }[tab] || renderDashboard)();
+  }
+
+  async function getMembros(cid) {
+    if (membrosCache[cid]) return membrosCache[cid];
+    try { membrosCache[cid] = await DB.getMembros(cid); } catch (e) { membrosCache[cid] = []; }
+    return membrosCache[cid];
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // DASHBOARD
+  // ══════════════════════════════════════════════════════════════
+  async function renderDashboard() {
+    const cid = getContratoAtual();
+    view.innerHTML = `<div class="view-head"><div>
+      <div class="eyebrow">Desempenho</div><h1>Prazo de atendimento das não conformidades</h1></div></div>
+      <div id="dashBody" class="muted">Carregando…</div>`;
+    try {
+      const s = await DB.getStats(cid);
+      const body = $('#dashBody');
+      body.innerHTML = `
+        <div class="grid cols-3">
+          <div class="kpi"><div class="n danger">${s.abertasVencidas}</div><div class="lbl">Em aberto e vencidas</div></div>
+          <div class="kpi"><div class="n">${s.abertas}</div><div class="lbl">Em aberto</div></div>
+          <div class="kpi"><div class="n">${s.total}</div><div class="lbl">Total no escopo</div></div>
+          <div class="kpi"><div class="n ok">${s.pctNoPrazo === null ? '—' : s.pctNoPrazo + '%'}</div><div class="lbl">Atendidas no prazo</div></div>
+          <div class="kpi"><div class="n warn">${s.atendidasComAtraso}</div><div class="lbl">Concluídas com atraso</div></div>
+          <div class="kpi"><div class="n">${s.tempoMedioAtendimentoHoras === null ? '—' : s.tempoMedioAtendimentoHoras + 'h'}</div><div class="lbl">Tempo médio de atendimento</div></div>
+        </div>
+        <div class="view-head" style="margin-top:26px"><div><div class="eyebrow">${cid ? 'Contrato selecionado' : 'Selecione um contrato'}</div>
+          <h2>Não conformidades em aberto</h2></div></div>
+        <div id="abertas"></div>`;
+      if (cid) {
+        const ocs = (await DB.getOcorrenciasContrato(cid)).filter(o => o.estado !== 'concluida');
+        $('#abertas').innerHTML = ocs.length
+          ? ocs.sort(ordenarPorUrgencia).map(cardOcorrencia).join('')
+          : `<div class="empty"><strong>Nenhuma não conformidade em aberto</strong>Bom sinal — este contrato está em dia.</div>`;
+      } else {
+        $('#abertas').innerHTML = `<div class="empty"><strong>Escolha um contrato acima</strong>Para ver as não conformidades em aberto por contrato.</div>`;
+      }
+    } catch (e) { $('#dashBody').innerHTML = `<div class="empty"><strong>Não foi possível carregar</strong>${esc(e.message)}</div>`; }
+  }
+  function ordenarPorUrgencia(a, b) {
+    const rank = { vencida: 0, vencendo: 1, aberta: 2, atraso: 3, ok: 4 };
+    return rank[statusOcorrencia(a).key] - rank[statusOcorrencia(b).key];
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // OCORRÊNCIAS
+  // ══════════════════════════════════════════════════════════════
+  let ocSub = 'atribuidas';
+  function renderOcorrencias() {
+    view.innerHTML = `<div class="view-head">
+      <div><div class="eyebrow">Não conformidades</div><h1>Ocorrências</h1></div>
+      <div class="subtabs" id="ocSubs">
+        <button data-s="atribuidas">Atribuídas a mim</button>
+        <button data-s="criar">Criar ocorrência</button>
+        <button data-s="contrato">Do contrato</button>
+      </div></div>
+      <div id="ocBody"></div>`;
+    $('#ocSubs').querySelectorAll('button').forEach(b => {
+      b.setAttribute('aria-current', String(b.dataset.s === ocSub));
+      b.onclick = () => { ocSub = b.dataset.s; renderOcorrencias(); };
+    });
+    ({ atribuidas: ocAtribuidas, criar: ocCriar, contrato: ocDoContrato }[ocSub])();
+  }
+
+  function cardOcorrencia(o, opts = {}) {
+    const st = statusOcorrencia(o);
+    const g  = (o.gravidade || 'baixa').toLowerCase();
+    const podeResolver = opts.resolver && o.estado !== 'concluida' &&
+      (o.atribuidoA || '').toLowerCase() === (getCurrentUser().email || '').toLowerCase();
+    return `<div class="card spine s-${st.key}">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start">
+        <div>
+          <span class="chip ${st.key}">${st.label}</span>
+          <span class="grav ${g}" style="margin-left:8px">${esc(o.gravidade || 'baixa')}</span>
+        </div>
+        <span class="muted" style="font-size:.78rem">${o.criadoEm ? new Date(o.criadoEm).toLocaleDateString('pt-BR') : ''}</span>
+      </div>
+      <p style="margin:8px 0 6px;font-weight:600">${esc(o.descricao || '')}</p>
+      <div class="muted" style="font-size:.8rem">
+        Prazo: <strong>${fmtDate(o.prazoCorrecao)}</strong>
+        · Criada por ${esc(o.criadoPorNome || o.criadoPor || '?')}
+        · Atribuída a ${esc(o.atribuidoA || '—')}
+      </div>
+      ${Array.isArray(o.fotos) && o.fotos.length ? `<div class="fotos">${o.fotos.map(f => `<img src="${esc(f.dataUrl)}" alt="">`).join('')}</div>` : ''}
+      ${o.execucao ? `<div class="card" style="margin-top:10px;box-shadow:none;background:var(--surface-2)">
+        <div class="eyebrow">Execução da correção</div>
+        <div style="font-size:.86rem;margin-top:4px">${esc(o.execucao.descricaoExecucao)}</div>
+        <div class="muted" style="font-size:.78rem;margin-top:4px">Executada em ${fmtDate(o.execucao.dataExecucao)} por ${esc(o.execucao.porNome || o.execucao.por)}</div>
+      </div>` : ''}
+      ${podeResolver ? `<div style="margin-top:12px"><button class="btn primary sm" data-resolver="${o.id}">Registrar correção</button></div>` : ''}
+    </div>`;
+  }
+  function ligarResolver(container) {
+    container.querySelectorAll('[data-resolver]').forEach(b => b.onclick = () => abrirResolver(b.dataset.resolver));
+  }
+
+  async function ocAtribuidas() {
+    const body = $('#ocBody'); body.innerHTML = '<p class="muted">Carregando…</p>';
+    try {
+      const ocs = await DB.getAtribuidas();
+      body.innerHTML = ocs.length
+        ? ocs.sort(ordenarPorUrgencia).map(o => cardOcorrencia(o, { resolver: true })).join('')
+        : `<div class="empty"><strong>Nada atribuído a você</strong>Quando alguém atribuir uma correção a você, ela aparece aqui.</div>`;
+      ligarResolver(body);
+    } catch (e) { body.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+  }
+
+  async function ocDoContrato() {
+    const cid = getContratoAtual(); const body = $('#ocBody');
+    if (!cid) return body.innerHTML = `<div class="empty"><strong>Escolha um contrato</strong>Selecione um contrato acima para ver suas ocorrências.</div>`;
+    body.innerHTML = '<p class="muted">Carregando…</p>';
+    try {
+      const ocs = await DB.getOcorrenciasContrato(cid);
+      body.innerHTML = ocs.length
+        ? ocs.sort(ordenarPorUrgencia).map(o => cardOcorrencia(o, { resolver: true })).join('')
+        : `<div class="empty"><strong>Sem ocorrências neste contrato</strong>Registre a primeira na aba “Criar ocorrência”.</div>`;
+      ligarResolver(body);
+    } catch (e) { body.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+  }
+
+  async function ocCriar() {
+    const cid = getContratoAtual(); const body = $('#ocBody');
+    if (!cid) return body.innerHTML = `<div class="empty"><strong>Escolha um contrato</strong>Selecione o contrato onde observou a ocorrência.</div>`;
+    const membros = (await getMembros(cid)).filter(m => m.email.toLowerCase() !== getCurrentUser().email.toLowerCase());
+    body.innerHTML = `<div class="card">
+      <div class="row">
+        <label class="field"><span>Gravidade</span>
+          <select id="fGrav">${GRAVIDADES.map(g => `<option value="${g}">${g[0].toUpperCase() + g.slice(1)}</option>`).join('')}</select></label>
+        <label class="field"><span>Prazo para correção</span><input type="date" id="fPrazo"></label>
+      </div>
+      <label class="field"><span>Descrição da não conformidade</span>
+        <textarea id="fDesc" placeholder="O que foi observado, onde, e por quê é uma não conformidade"></textarea></label>
+      <label class="field"><span>Atribuir a (responsável pela correção)</span>
+        <select id="fAtrib">
+          <option value="">— escolha um membro do contrato —</option>
+          ${membros.map(m => `<option value="${esc(m.email)}">${esc(m.name || m.email)} · ${esc((PAPEIS[m.papel]||{}).label || m.papel)}</option>`).join('')}
+        </select></label>
+      <label class="field"><span>Fotos (até 3)</span><input type="file" id="fFotos" accept="image/*" capture="environment" multiple></label>
+      <div class="fotos" id="fPrev"></div>
+      <div style="margin-top:8px"><button class="btn primary" id="fSalvar">Registrar ocorrência</button></div>
+    </div>`;
+    let fotos = [];
+    $('#fFotos').onchange = async (e) => {
+      for (const file of [...e.target.files]) { if (fotos.length >= 3) break; fotos.push(await fileToFoto(file)); }
+      $('#fPrev').innerHTML = fotos.map(f => `<img src="${f.dataUrl}" alt="">`).join('');
+      e.target.value = '';
+    };
+    $('#fSalvar').onclick = async () => {
+      const desc = $('#fDesc').value.trim();
+      if (!desc) return toast('Descreva a não conformidade.', true);
+      $('#fSalvar').disabled = true;
+      try {
+        await DB.criarOcorrencia({
+          contratoId: cid, gravidade: $('#fGrav').value,
+          prazoCorrecao: $('#fPrazo').value || null, descricao: desc,
+          atribuidoA: $('#fAtrib').value || null, fotos,
+        });
+        toast('Ocorrência registrada.');
+        ocSub = 'contrato'; renderOcorrencias();
+      } catch (e) { toast(e.message, true); $('#fSalvar').disabled = false; }
+    };
+  }
+
+  function abrirResolver(id) {
+    openModal(`<div class="eyebrow">Ver atribuídas a mim</div><h2>Registrar correção</h2>
+      <p class="muted" style="font-size:.85rem;margin:.3rem 0 1rem">Você é o responsável por esta correção. Registre o que foi feito.</p>
+      <label class="field"><span>Data de execução</span><input type="date" id="rData" value="${new Date().toISOString().slice(0,10)}"></label>
+      <label class="field"><span>Descrição da execução</span><textarea id="rDesc" placeholder="O que foi feito para corrigir"></textarea></label>
+      <label class="field"><span>Fotos (até 3)</span><input type="file" id="rFotos" accept="image/*" capture="environment" multiple></label>
+      <div class="fotos" id="rPrev"></div>
+      <div class="actions"><button class="btn" id="rCancel">Cancelar</button><button class="btn primary" id="rOk">Concluir correção</button></div>`);
+    let fotos = [];
+    $('#rFotos').onchange = async (e) => {
+      for (const file of [...e.target.files]) { if (fotos.length >= 3) break; fotos.push(await fileToFoto(file)); }
+      $('#rPrev').innerHTML = fotos.map(f => `<img src="${f.dataUrl}" alt="">`).join(''); e.target.value = '';
+    };
+    $('#rCancel').onclick = closeModal;
+    $('#rOk').onclick = async () => {
+      const d = $('#rDesc').value.trim();
+      if (!d) return toast('Descreva o que foi feito.', true);
+      $('#rOk').disabled = true;
+      try {
+        await DB.resolverOcorrencia(id, { dataExecucao: $('#rData').value, descricaoExecucao: d, fotos });
+        closeModal(); toast('Correção registrada.'); renderOcorrencias();
+      } catch (e) { toast(e.message, true); $('#rOk').disabled = false; }
+    };
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // CADASTRO (estabelecimentos, contratos, acessos)
+  // ══════════════════════════════════════════════════════════════
+  let cadSub = 'contratos';
+  function renderCadastro() {
+    view.innerHTML = `<div class="view-head">
+      <div><div class="eyebrow">Administração</div><h1>Cadastro</h1></div>
+      <div class="subtabs" id="cadSubs">
+        <button data-s="contratos">Contratos</button>
+        <button data-s="estabelecimentos">Estabelecimentos</button>
+        <button data-s="acessos">Acessos do contrato</button>
+      </div></div><div id="cadBody"></div>`;
+    $('#cadSubs').querySelectorAll('button').forEach(b => {
+      b.setAttribute('aria-current', String(b.dataset.s === cadSub));
+      b.onclick = () => { cadSub = b.dataset.s; renderCadastro(); };
+    });
+    ({ contratos: cadContratos, estabelecimentos: cadEstabelecimentos, acessos: cadAcessos }[cadSub])();
+  }
+
+  async function cadEstabelecimentos() {
+    const body = $('#cadBody'); body.innerHTML = '<p class="muted">Carregando…</p>';
+    const ests = await DB.getEstabelecimentos();
+    body.innerHTML = `<div style="margin-bottom:14px"><button class="btn primary" id="novoEst">Novo estabelecimento</button></div>
+      ${ests.length ? ests.map(e => `<div class="card"><strong>${esc(e.nome)}</strong>
+        <div class="muted" style="font-size:.82rem">${esc(e.cnpj || '')}${e.endereco ? ' · ' + esc(e.endereco) : ''}</div></div>`).join('')
+        : `<div class="empty"><strong>Nenhum estabelecimento</strong>Cadastre o estabelecimento detentor do contrato.</div>`}`;
+    $('#novoEst').onclick = () => openModal(`<h2>Novo estabelecimento</h2>
+      <label class="field"><span>Nome</span><input id="eNome"></label>
+      <label class="field"><span>CNPJ</span><input id="eCnpj"></label>
+      <label class="field"><span>Endereço</span><input id="eEnd"></label>
+      <div class="actions"><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="eOk">Salvar</button></div>`);
+    document.addEventListener('click', async function h(ev) {
+      if (ev.target.id !== 'eOk') return;
+      const nome = $('#eNome').value.trim(); if (!nome) return toast('Informe o nome.', true);
+      try { await DB.saveEstabelecimento({ nome, cnpj: $('#eCnpj').value.trim(), endereco: $('#eEnd').value.trim() });
+        closeModal(); toast('Estabelecimento salvo.'); cadEstabelecimentos(); } catch (e) { toast(e.message, true); }
+      document.removeEventListener('click', h);
+    });
+  }
+
+  async function cadContratos() {
+    const body = $('#cadBody'); body.innerHTML = '<p class="muted">Carregando…</p>';
+    const [ests] = await Promise.all([DB.getEstabelecimentos().catch(() => [])]);
+    body.innerHTML = `<div style="margin-bottom:14px"><button class="btn primary" id="novoCtr">Novo contrato</button></div>
+      ${contratos.length ? contratos.map(c => `<div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div><strong>${esc(c.numero)}</strong> ${c.sim ? '<span class="chip sim">S.I.M.</span>' : ''}
+            <div class="muted" style="font-size:.82rem">${esc(c.objeto || '')}${c.vigenciaInicio ? ' · vigência ' + fmtDate(c.vigenciaInicio) + '–' + fmtDate(c.vigenciaFim) : ''}</div></div>
+          <span class="muted" style="font-size:.78rem">${c.sim ? '14 planilhas P.A.C.' : '8 planilhas P.A.C.'}</span>
+        </div></div>`).join('')
+        : `<div class="empty"><strong>Nenhum contrato</strong>Crie o primeiro contrato para começar.</div>`}`;
+    $('#novoCtr').onclick = () => openModal(`<h2>Novo contrato</h2>
+      <div class="row"><label class="field"><span>Número</span><input id="cNum"></label>
+        <label class="field"><span>Estabelecimento</span><select id="cEst"><option value="">—</option>
+          ${ests.map(e => `<option value="${e.id}">${esc(e.nome)}</option>`).join('')}</select></label></div>
+      <label class="field"><span>Objeto do contrato</span><input id="cObj"></label>
+      <div class="row"><label class="field"><span>Vigência — início</span><input type="date" id="cIni"></label>
+        <label class="field"><span>Vigência — fim</span><input type="date" id="cFim"></label></div>
+      <label class="field" style="display:flex;gap:8px;align-items:center">
+        <input type="checkbox" id="cSim" style="width:auto"><span style="margin:0">Atividade com Selo de Inspeção Municipal (S.I.M.) — habilita 14 planilhas no P.A.C.</span></label>
+      <div class="actions"><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="cOk">Salvar</button></div>`);
+    document.addEventListener('click', async function h(ev) {
+      if (ev.target.id !== 'cOk') return;
+      const numero = $('#cNum').value.trim(); if (!numero) return toast('Informe o número.', true);
+      try {
+        await DB.saveContrato({ numero, estabelecimentoId: $('#cEst').value || null, objeto: $('#cObj').value.trim(),
+          vigenciaInicio: $('#cIni').value || null, vigenciaFim: $('#cFim').value || null, sim: $('#cSim').checked });
+        closeModal(); toast('Contrato salvo.'); await refreshMe(); await carregarContratos(); cadContratos();
+      } catch (e) { toast(e.message, true); }
+      document.removeEventListener('click', h);
+    });
+  }
+
+  async function cadAcessos() {
+    const cid = getContratoAtual(); const body = $('#cadBody');
+    if (!cid) return body.innerHTML = `<div class="empty"><strong>Escolha um contrato</strong>Selecione o contrato para gerenciar seus acessos.</div>`;
+    if (papelNoContrato(cid) !== 'administrador') return body.innerHTML = `<div class="empty"><strong>Acesso restrito</strong>Só o administrador deste contrato gerencia os acessos.</div>`;
+    body.innerHTML = '<p class="muted">Carregando…</p>';
+    let acessos = [];
+    try { acessos = await DB.getAcessos(cid); } catch (e) { return body.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+    const papeis = Object.keys(PAPEIS);
+    body.innerHTML = `<div class="card">
+      <div class="eyebrow">Adicionar acesso</div>
+      <div class="row" style="margin-top:8px">
+        <input id="aEmail" placeholder="e-mail@dominio.com" style="flex:2 1 220px">
+        <input id="aNome" placeholder="Nome (opcional)">
+        <select id="aPapel">${papeis.map(p => `<option value="${p}">${PAPEIS[p].label}</option>`).join('')}</select>
+        <button class="btn primary" id="aAdd" style="flex:0 0 auto">Adicionar</button>
+      </div></div>
+      <div style="margin-top:14px">${acessos.length ? acessos.map(a => `<div class="card" style="display:flex;justify-content:space-between;align-items:center">
+        <div><strong>${esc(a.name || a.email)}</strong>
+          <div class="muted" style="font-size:.82rem">${esc(a.email)} · ${esc((PAPEIS[a.papel]||{}).label || a.papel)}</div></div>
+        <button class="btn sm danger" data-rm="${a.id}">Remover</button></div>`).join('')
+        : `<div class="empty"><strong>Nenhum acesso ainda</strong>Adicione o fiscal, o gestor e os executores deste contrato.</div>`}</div>`;
+    $('#aAdd').onclick = async () => {
+      const email = $('#aEmail').value.trim(); if (!email.includes('@')) return toast('E-mail inválido.', true);
+      try { await DB.addAcesso(cid, { email, papel: $('#aPapel').value, name: $('#aNome').value.trim() });
+        toast('Acesso adicionado.'); membrosCache = {}; cadAcessos(); } catch (e) { toast(e.message, true); }
+    };
+    body.querySelectorAll('[data-rm]').forEach(b => b.onclick = async () => {
+      try { await DB.removeAcesso(b.dataset.rm, cid); toast('Acesso removido.'); membrosCache = {}; cadAcessos(); }
+      catch (e) { toast(e.message, true); }
+    });
+  }
+
+  window.closeModal = closeModal;
+  </script>
+</body>
+</html>

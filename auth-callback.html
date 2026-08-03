@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Entrando… — QualiHUB</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="login-wrap">
+    <div class="login-card">
+      <div class="mark">QH</div>
+      <h1>Entrando…</h1>
+      <p class="muted" id="msg" style="margin-top:10px">Validando seu acesso.</p>
+      <a class="btn" id="voltar" href="index.html" style="display:none;margin-top:14px">Voltar ao login</a>
+    </div>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="api-client.js"></script>
+  <script>
+    const msg = document.getElementById('msg');
+    function fail(t) { msg.textContent = t; document.getElementById('voltar').style.display = 'inline-flex'; }
+
+    (async () => {
+      // O fluxo implícito devolve o token no fragmento: #access_token=...
+      const hash  = new URLSearchParams(location.hash.slice(1));
+      const token = hash.get('access_token');
+      const errG  = hash.get('error');
+      if (errG)   return fail('O Google recusou o login: ' + errG);
+      if (!token) return fail('Token do Google não recebido. Tente novamente.');
+      try {
+        await loginWithGoogleToken(token);
+        location.replace('app.html');
+      } catch (e) {
+        fail(e.message || 'Não foi possível entrar.');
+      }
+    })();
+  </script>
+</body>
+</html>
