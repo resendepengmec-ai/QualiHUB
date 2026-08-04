@@ -168,6 +168,7 @@ const DB = {
 
   // Plataforma (SaaS) — administradores de cliente (só master)
   getPlatformAdmins:  ()      => API.get('/platform/admins'),
+  getPlatformTree:    ()      => API.get('/platform/tree'),
   addPlatformAdmin:   (a)     => API.post('/platform/admins', a),
   removePlatformAdmin:(email) => API.delete(`/platform/admins/${encodeURIComponent(email)}`),
 
