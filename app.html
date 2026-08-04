@@ -44,6 +44,7 @@
 
   function isAdministradorAnywhere() {
     if (isMaster()) return true;
+    if (getCurrentUser().role === 'admin') return true; // administrador de cliente
     return getAcessos().some(a => a.papel === 'administrador');
   }
 
@@ -85,6 +86,7 @@
     { id: 'dashboard',   label: 'Dashboard' },
     { id: 'ocorrencias', label: 'Ocorrências' },
     { id: 'cadastro',    label: 'Cadastro', when: isAdministradorAnywhere },
+    { id: 'clientes',    label: 'Clientes', when: isMaster },
   ];
   let active = 'dashboard';
   function montarNav() {
@@ -95,7 +97,7 @@
   function irPara(tab) {
     active = tab; location.hash = tab;
     $('#nav').querySelectorAll('button').forEach(b => b.setAttribute('aria-current', String(b.dataset.tab === tab)));
-    ({ dashboard: renderDashboard, ocorrencias: renderOcorrencias, cadastro: renderCadastro }[tab] || renderDashboard)();
+    ({ dashboard: renderDashboard, ocorrencias: renderOcorrencias, cadastro: renderCadastro, clientes: renderClientes }[tab] || renderDashboard)();
   }
 
   async function getMembros(cid) {
@@ -389,6 +391,48 @@
       try { await DB.removeAcesso(b.dataset.rm, cid); toast('Acesso removido.'); membrosCache = {}; cadAcessos(); }
       catch (e) { toast(e.message, true); }
     });
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // CLIENTES (SaaS) — só o ADMIN MASTER libera administradores de cliente
+  // ══════════════════════════════════════════════════════════════
+  async function renderClientes() {
+    view.innerHTML = `<div class="view-head">
+      <div><div class="eyebrow">Plataforma</div><h1>Clientes</h1>
+        <p class="muted" style="font-size:.86rem;margin:.3rem 0 0">Libere o e-mail do administrador de cada cliente. Ele entra com Google e passa a criar os próprios contratos, estabelecimentos e acessos — vendo só o que é dele.</p></div></div>
+      <div class="card">
+        <div class="eyebrow">Novo administrador de cliente</div>
+        <div class="row" style="margin-top:8px">
+          <input id="adEmail" placeholder="e-mail@empresa.com" style="flex:2 1 220px">
+          <input id="adOrg" placeholder="Empresa / cliente">
+          <input id="adNome" placeholder="Nome (opcional)">
+          <button class="btn primary" id="adAdd" style="flex:0 0 auto">Liberar acesso</button>
+        </div></div>
+      <div id="adLista" style="margin-top:14px"><p class="muted">Carregando…</p></div>`;
+
+    async function listar() {
+      const lista = await DB.getPlatformAdmins();
+      $('#adLista').innerHTML = lista.length ? lista.map(a => `<div class="card" style="display:flex;justify-content:space-between;align-items:center">
+        <div><strong>${esc(a.org || a.name || a.email)}</strong>
+          ${a.jaEntrou ? '<span class="chip ok" style="margin-left:8px">Já entrou</span>' : '<span class="chip aberta" style="margin-left:8px">Aguardando 1º acesso</span>'}
+          <div class="muted" style="font-size:.82rem">${esc(a.email)}${a.name && a.org ? ' · ' + esc(a.name) : ''}</div></div>
+        <button class="btn sm danger" data-rm="${esc(a.email)}">Revogar</button></div>`).join('')
+        : `<div class="empty"><strong>Nenhum cliente liberado ainda</strong>Cadastre o e-mail do primeiro administrador de cliente acima.</div>`;
+      $('#adLista').querySelectorAll('[data-rm]').forEach(b => b.onclick = async () => {
+        if (!confirm(`Revogar o acesso de ${b.dataset.rm}? Os contratos que ele criou continuam existindo.`)) return;
+        try { await DB.removePlatformAdmin(b.dataset.rm); toast('Acesso revogado.'); listar(); } catch (e) { toast(e.message, true); }
+      });
+    }
+    $('#adAdd').onclick = async () => {
+      const email = $('#adEmail').value.trim();
+      if (!email.includes('@')) return toast('E-mail inválido.', true);
+      try {
+        await DB.addPlatformAdmin({ email, org: $('#adOrg').value.trim(), name: $('#adNome').value.trim() });
+        $('#adEmail').value = $('#adOrg').value = $('#adNome').value = '';
+        toast('Administrador de cliente liberado.'); listar();
+      } catch (e) { toast(e.message, true); }
+    };
+    listar();
   }
 
   window.closeModal = closeModal;

@@ -166,6 +166,11 @@ const DB = {
   // Dashboard
   getStats:           (cid)   => API.get('/stats' + (cid ? `?contrato=${cid}` : '')),
 
+  // Plataforma (SaaS) — administradores de cliente (só master)
+  getPlatformAdmins:  ()      => API.get('/platform/admins'),
+  addPlatformAdmin:   (a)     => API.post('/platform/admins', a),
+  removePlatformAdmin:(email) => API.delete(`/platform/admins/${encodeURIComponent(email)}`),
+
   // Assinaturas
   verifySignatures:   (id)    => API.get(`/sign/${id}/verify`),
 };

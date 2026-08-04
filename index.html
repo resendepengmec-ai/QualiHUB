@@ -5,8 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>QualiHUB — Entrar</title>
   <link rel="stylesheet" href="styles.css">
+  <style>
+    /* Área invisível no canto superior esquerdo: 2 toques revelam a
+       configuração (primeiro acesso). Fica fora do caminho de todo mundo. */
+    #hotspot { position: fixed; top: 0; left: 0; width: 56px; height: 56px; z-index: 30; cursor: default; }
+    #cfg { display: none; }
+    #cfg.show { display: block; }
+    .saiba { margin-top: 10px; }
+  </style>
 </head>
 <body>
+  <div id="hotspot" title=""></div>
+
   <div class="login-wrap">
     <div class="login-card">
       <div class="mark">QH</div>
@@ -16,22 +26,57 @@
       <button class="btn primary g-btn" id="btnGoogle">Entrar com Google</button>
       <p class="muted" id="msg" style="font-size:.82rem;margin-top:14px"></p>
 
-      <details class="login-alt" id="alt">
-        <summary>Configuração (primeiro acesso)</summary>
-        <label class="field" style="margin-top:12px">
-          <span>URL do backend (Render)</span>
-          <input id="apiUrl" placeholder="https://qualihub-backend.onrender.com">
-        </label>
-        <label class="field">
-          <span>Google Client ID</span>
-          <input id="clientId" placeholder="xxxxx.apps.googleusercontent.com">
-        </label>
-        <button class="btn sm" id="btnSalvarCfg">Salvar e continuar</button>
-        <p class="muted" style="font-size:.75rem;margin-top:10px">
-          O ideal é definir <code>GOOGLE_CLIENT_ID</code> no backend; aí esta tela nem aparece.
-          O primeiro e-mail a entrar vira o administrador master.
-        </p>
-      </details>
+      <button class="btn ghost sm saiba" id="btnSaiba">Saiba mais</button>
+
+      <!-- Escondido por padrao. Revelado por 2 toques no canto sup. esquerdo,
+           ou automaticamente se o backend ainda nao tiver Client ID. -->
+      <div id="cfg">
+        <details class="login-alt" id="alt" open>
+          <summary>Configuração (primeiro acesso)</summary>
+          <label class="field" style="margin-top:12px">
+            <span>URL do backend (Render)</span>
+            <input id="apiUrl" placeholder="https://qualihub-backend.onrender.com">
+          </label>
+          <label class="field">
+            <span>Google Client ID</span>
+            <input id="clientId" placeholder="xxxxx.apps.googleusercontent.com">
+          </label>
+          <button class="btn sm" id="btnSalvarCfg">Salvar e continuar</button>
+          <p class="muted" style="font-size:.75rem;margin-top:10px">
+            O ideal é definir <code>GOOGLE_CLIENT_ID</code> no backend; aí esta tela nem aparece.
+            O primeiro e-mail a entrar vira o administrador master.
+          </p>
+        </details>
+      </div>
+    </div>
+  </div>
+
+  <!-- Saiba mais -->
+  <div class="modal-bg" id="modalBg">
+    <div class="modal">
+      <div class="eyebrow">Sobre o sistema</div>
+      <h2>QualiHUB</h2>
+      <p style="margin:.5rem 0 0">O QualiHUB é um sistema de gestão de qualidade de alimentos. Ele reúne, por
+        contrato, os documentos sanitários, o acompanhamento de não conformidades e os controles de
+        autocontrole (P.A.C.), com indicadores de desempenho.</p>
+
+      <h3 style="margin-top:16px">O que você encontra aqui</h3>
+      <ul style="margin:.4rem 0 0;padding-left:1.1rem;font-size:.9rem;line-height:1.7">
+        <li><strong>Meus Contratos</strong> — documentos sanitários e saúde ocupacional de cada contrato.</li>
+        <li><strong>Ocorrências</strong> — registro e tratamento das não conformidades, com prazo e responsável.</li>
+        <li><strong>P.A.C.</strong> — planilhas de autocontrole por produto e por ambiente.</li>
+        <li><strong>Dashboard</strong> — indicadores de desempenho, como o prazo de atendimento.</li>
+      </ul>
+
+      <h3 style="margin-top:16px">Acesso</h3>
+      <p style="margin:.4rem 0 0;font-size:.9rem">Você entra com sua conta Google. O acesso é restrito: só e-mails
+        autorizados pelo administrador do contrato conseguem entrar, e cada pessoa vê apenas os contratos aos
+        quais foi vinculada.</p>
+
+      <p class="muted" style="font-size:.78rem;margin-top:16px">Sistema privado, de uso restrito aos clientes e
+        equipes autorizadas. Em caso de dúvida sobre seu acesso, fale com o administrador do seu contrato.</p>
+
+      <div class="actions"><button class="btn primary" id="btnFechaSaiba">Entendi</button></div>
     </div>
   </div>
 
@@ -39,22 +84,38 @@
   <script src="api-client.js"></script>
   <script>
     const msg = document.getElementById('msg');
-    // Já logado? vai direto pro app.
+    const cfg = document.getElementById('cfg');
+    // Ja logado? vai direto pro app.
     if (getCurrentUser()) location.href = 'app.html';
 
-    // Se não houver Client ID disponível, abre o painel de configuração.
-    (async () => {
-      const cid = await fetchClientId();
-      if (!cid) document.getElementById('alt').open = true;
-      // Preenche campos com o que já estiver salvo.
+    function revelarCfg() {
+      cfg.classList.add('show');
+      document.getElementById('alt').open = true;
       document.getElementById('apiUrl').value   = localStorage.getItem('quali_api_url') || (window.QUALI_API || '');
       document.getElementById('clientId').value = localStorage.getItem('quali_client_id') || '';
+    }
+
+    // Se nao houver Client ID disponivel (deploy ainda nao configurado),
+    // revela sozinho pra nao travar o primeiro acesso.
+    (async () => {
+      const cid = await fetchClientId();
+      if (!cid) revelarCfg();
     })();
+
+    // 2 toques / duplo clique no canto superior esquerdo -> revela a config.
+    document.getElementById('hotspot').addEventListener('dblclick', revelarCfg);
+
+    // "Saiba mais"
+    document.getElementById('btnSaiba').onclick   = () => document.getElementById('modalBg').classList.add('show');
+    document.getElementById('btnFechaSaiba').onclick = () => document.getElementById('modalBg').classList.remove('show');
+    document.getElementById('modalBg').addEventListener('click', e => {
+      if (e.target === document.getElementById('modalBg')) e.currentTarget.classList.remove('show');
+    });
 
     document.getElementById('btnGoogle').onclick = async () => {
       msg.textContent = '';
       try { await startGoogleLogin(); }
-      catch (e) { msg.textContent = e.message; document.getElementById('alt').open = true; }
+      catch (e) { msg.textContent = e.message; revelarCfg(); }
     };
 
     document.getElementById('btnSalvarCfg').onclick = () => {
@@ -62,7 +123,7 @@
       const cid = document.getElementById('clientId').value.trim();
       if (url) localStorage.setItem('quali_api_url', url);
       if (cid) localStorage.setItem('quali_client_id', cid);
-      msg.textContent = 'Configuração salva. Clique em “Entrar com Google”.';
+      msg.textContent = 'Configuração salva. Clique em "Entrar com Google".';
     };
   </script>
 </body>
