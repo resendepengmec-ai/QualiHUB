@@ -9,7 +9,7 @@
   // ►► TROQUE AQUI quando o backend estiver no ar no Render ◄◄
   // (sem barra no final). Enquanto estiver vazio, o frontend tenta o mesmo
   // domínio (útil se você servir o front pelo próprio backend).
-  var API_PRODUCAO = 'https://qualihub-backend.onrender.com'; // ex.: 'https://qualihub-backend.onrender.com'
+  var API_PRODUCAO = ''; // ex.: 'https://qualihub-backend.onrender.com'
 
   var API_LOCAL = API_PRODUCAO;
 

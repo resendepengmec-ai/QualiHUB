@@ -165,6 +165,11 @@ const DB = {
 
   // Dashboard
   getStats:           (cid)   => API.get('/stats' + (cid ? `?contrato=${cid}` : '')),
+  getRelatorioOcorrencias: (q) => API.get('/relatorios/ocorrencias' + (q ? `?${q}` : '')),
+
+  // Perfil da empresa (cabeçalho dos PDFs)
+  getPerfil:          ()      => API.get('/perfil'),
+  savePerfil:         (p)     => API.post('/perfil', { perfil: p }),
 
   // Plataforma (SaaS) — administradores de cliente (só master)
   getPlatformAdmins:  ()      => API.get('/platform/admins'),
@@ -194,12 +199,57 @@ function statusOcorrencia(o) {
 }
 const GRAVIDADES = ['baixa', 'média', 'alta', 'crítica'];
 
-// Converte um <input type="file"> de imagem em objeto de foto assinável.
-function fileToFoto(file) {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve({ dataUrl: r.result, capturedAt: Date.now(), nome: file.name });
-    r.onerror = () => reject(new Error('Falha ao ler a imagem'));
-    r.readAsDataURL(file);
+// ── Captura de foto com rótulo de data/hora + geolocalização ──────
+// Helper ÚNICO para TODOS os módulos (ocorrências e demais). Ao capturar,
+// pega a localização do dispositivo e QUEIMA o rótulo na própria imagem, no
+// espírito da última rodada do SGM — assim o carimbo viaja junto pro PDF.
+let _lastPos = null, _lastPosAt = 0;
+function _getPos() {
+  return new Promise(resolve => {
+    if (!navigator.geolocation) return resolve(null);
+    if (_lastPos && Date.now() - _lastPosAt < 60000) return resolve(_lastPos); // reusa por 60s
+    navigator.geolocation.getCurrentPosition(
+      p => { _lastPos = { lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy }; _lastPosAt = Date.now(); resolve(_lastPos); },
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+    );
   });
 }
+function _stampImage(dataUrl, capturedAt, pos) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      const maxW = 1600, scale = Math.min(1, maxW / img.width);
+      const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
+      const c = document.createElement('canvas'); c.width = w; c.height = h;
+      const ctx = c.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      const dt  = new Date(capturedAt).toLocaleString('pt-BR');
+      const loc = pos ? `${pos.lat.toFixed(5)}, ${pos.lng.toFixed(5)}${pos.acc ? '  ±' + Math.round(pos.acc) + 'm' : ''}`
+                      : 'Localização indisponível';
+      const lines = [dt, loc];
+      const fs = Math.max(12, Math.round(w * 0.028)), pad = Math.round(w * 0.02);
+      ctx.font = `600 ${fs}px -apple-system, "Segoe UI", Roboto, sans-serif`;
+      const lh = fs * 1.28, barH = pad * 2 + lines.length * lh;
+      ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, h - barH, w, barH);
+      ctx.fillStyle = '#fff'; ctx.textBaseline = 'top';
+      lines.forEach((ln, i) => ctx.fillText(ln, pad, h - barH + pad + i * lh));
+      resolve(c.toDataURL('image/jpeg', 0.85));
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+async function capturarFoto(file) {
+  const pos = await _getPos();
+  const capturedAt = Date.now();
+  const raw = await new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result); r.onerror = () => rej(new Error('Falha ao ler a imagem'));
+    r.readAsDataURL(file);
+  });
+  const dataUrl = await _stampImage(raw, capturedAt, pos);
+  return { dataUrl, capturedAt, lat: pos?.lat ?? null, lng: pos?.lng ?? null, nome: file.name };
+}
+// Compatibilidade: chamadas antigas a fileToFoto passam a carimbar também.
+const fileToFoto = capturarFoto;
