@@ -432,60 +432,91 @@
   async function cadEstabelecimentos() {
     const body = $('#cadBody'); body.innerHTML = '<p class="muted">Carregando…</p>';
     const ests = await DB.getEstabelecimentos();
+    const meEmail = (getCurrentUser().email || '').toLowerCase();
+    const podeEditar = (e) => isMaster() || (e.ownerEmail || '').toLowerCase() === meEmail;
     body.innerHTML = `<div style="margin-bottom:14px"><button class="btn primary" id="novoEst">Novo estabelecimento</button></div>
-      ${ests.length ? ests.map(e => `<div class="card"><strong>${esc(e.nome)}</strong>
-        <div class="muted" style="font-size:.82rem">${esc(e.cnpj || '')}${e.endereco ? ' · ' + esc(e.endereco) : ''}</div></div>`).join('')
+      ${ests.length ? ests.map(e => `<div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+          <div><strong>${esc(e.nome)}</strong>
+            <div class="muted" style="font-size:.82rem">${esc(e.cnpj || '')}${e.endereco ? ' · ' + esc(e.endereco) : ''}</div>
+            ${(e.lat != null && e.lng != null) ? `<div class="muted" style="font-size:.8rem;margin-top:2px">📍 ${e.lat}, ${e.lng} · <a href="https://www.google.com/maps?q=${e.lat},${e.lng}" target="_blank" rel="noopener">ver no mapa</a></div>` : ''}
+          </div>
+          ${podeEditar(e) ? `<button class="btn sm" data-edit="${e.id}">Editar</button>` : ''}
+        </div></div>`).join('')
         : `<div class="empty"><strong>Nenhum estabelecimento</strong>Cadastre o estabelecimento detentor do contrato.</div>`}`;
-    $('#novoEst').onclick = () => openModal(`<h2>Novo estabelecimento</h2>
-      <label class="field"><span>Nome</span><input id="eNome"></label>
-      <label class="field"><span>CNPJ</span><input id="eCnpj"></label>
-      <label class="field"><span>Endereço</span><input id="eEnd"></label>
+    $('#novoEst').onclick = () => abrirEstModal(null);
+    body.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => abrirEstModal(ests.find(x => x.id === b.dataset.edit)));
+  }
+
+  function abrirEstModal(e) {
+    const ed = !!e;
+    const coord = (ed && e.lat != null && e.lng != null) ? `${e.lat}, ${e.lng}` : '';
+    openModal(`<h2>${ed ? 'Editar' : 'Novo'} estabelecimento</h2>
+      <div class="row"><label class="field"><span>Nome</span><input id="eNome" value="${ed ? esc(e.nome) : ''}"></label>
+        <label class="field"><span>CNPJ</span><input id="eCnpj" value="${ed ? esc(e.cnpj || '') : ''}"></label></div>
+      <label class="field"><span>Endereço</span><input id="eEnd" value="${ed ? esc(e.endereco || '') : ''}"></label>
+      <label class="field"><span>Coordenadas (lat, long — padrão Google Maps)</span>
+        <input id="eCoord" placeholder="-18.16572, -47.94220" value="${esc(coord)}"></label>
+      <p class="muted" style="font-size:.76rem;margin-top:-6px">No Google Maps, clique com o botão direito no ponto e clique nas coordenadas para copiar; cole aqui.</p>
       <div class="actions"><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="eOk">Salvar</button></div>`);
-    document.addEventListener('click', async function h(ev) {
-      if (ev.target.id !== 'eOk') return;
+    $('#eOk').onclick = async () => {
       const nome = $('#eNome').value.trim(); if (!nome) return toast('Informe o nome.', true);
-      try { await DB.saveEstabelecimento({ nome, cnpj: $('#eCnpj').value.trim(), endereco: $('#eEnd').value.trim() });
-        closeModal(); toast('Estabelecimento salvo.'); cadEstabelecimentos(); } catch (e) { toast(e.message, true); }
-      document.removeEventListener('click', h);
-    });
+      let lat = null, lng = null;
+      const raw = $('#eCoord').value.trim();
+      if (raw) {
+        const p = raw.replace(/[()]/g, '').split(',').map(s => parseFloat(s.trim()));
+        if (p.length !== 2 || isNaN(p[0]) || isNaN(p[1]) || Math.abs(p[0]) > 90 || Math.abs(p[1]) > 180)
+          return toast('Coordenadas inválidas. Use: -18.16572, -47.94220', true);
+        lat = p[0]; lng = p[1];
+      }
+      const payload = { nome, cnpj: $('#eCnpj').value.trim(), endereco: $('#eEnd').value.trim(), lat, lng };
+      if (ed) payload.id = e.id;
+      try { await DB.saveEstabelecimento(payload); closeModal(); toast('Estabelecimento salvo.'); cadEstabelecimentos(); }
+      catch (err) { toast(err.message, true); }
+    };
   }
 
   async function cadContratos() {
     const body = $('#cadBody'); body.innerHTML = '<p class="muted">Carregando…</p>';
-    const [ests] = await Promise.all([DB.getEstabelecimentos().catch(() => [])]);
+    const ests = await DB.getEstabelecimentos().catch(() => []);
+    const podeEditar = (c) => isMaster() || papelNoContrato(c.id) === 'administrador';
     body.innerHTML = `<div style="margin-bottom:14px"><button class="btn primary" id="novoCtr">Novo contrato</button></div>
       ${contratos.length ? contratos.map(c => `<div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
           <div><strong>${esc(c.numero)}</strong> ${c.sim ? '<span class="chip sim">S.I.M.</span>' : ''}
-            <div class="muted" style="font-size:.82rem">${esc(c.objeto || '')}${c.vigenciaInicio ? ' · vigência ' + fmtDate(c.vigenciaInicio) + '–' + fmtDate(c.vigenciaFim) : ''}</div></div>
-          <span class="muted" style="font-size:.78rem">${c.sim ? '14 planilhas P.A.C.' : '8 planilhas P.A.C.'}</span>
-        </div></div>`).join('')
+            <div class="muted" style="font-size:.82rem">${esc(c.objeto || '')}${c.estabelecimentoNome ? ' · ' + esc(c.estabelecimentoNome) : ''}${c.vigenciaInicio ? ' · vigência ' + fmtDate(c.vigenciaInicio) + '–' + fmtDate(c.vigenciaFim) : ''}</div></div>
+          <div style="display:flex;gap:8px;align-items:center;flex:none">
+            <span class="muted" style="font-size:.78rem">${c.sim ? '14' : '8'} planilhas</span>
+            ${podeEditar(c) ? `<button class="btn sm" data-edit="${c.id}">Editar</button>` : ''}
+          </div></div></div>`).join('')
         : `<div class="empty"><strong>Nenhum contrato</strong>Crie o primeiro contrato para começar.</div>`}`;
-    $('#novoCtr').onclick = () => {
-      openModal(`<h2>Novo contrato</h2>
-        <div class="row"><label class="field"><span>Número</span><input id="cNum"></label>
-          <label class="field"><span>Estabelecimento</span><select id="cEst">
-            <option value="">— nenhum —</option>
-            ${ests.map(e => `<option value="${e.id}">${esc(e.nome)}</option>`).join('')}
-            <option value="__novo__">+ Novo estabelecimento…</option>
-          </select></label></div>
-        <div id="cEstNovoWrap" style="display:none">
-          <div class="row"><label class="field"><span>Nome do estabelecimento</span><input id="cEstNome"></label>
-            <label class="field"><span>CNPJ (opcional)</span><input id="cEstCnpj"></label></div>
-        </div>
-        <label class="field"><span>Objeto do contrato</span><input id="cObj"></label>
-        <div class="row"><label class="field"><span>Vigência — início</span><input type="date" id="cIni"></label>
-          <label class="field"><span>Vigência — fim</span><input type="date" id="cFim"></label></div>
-        <label class="field" style="display:flex;gap:8px;align-items:center">
-          <input type="checkbox" id="cSim" style="width:auto"><span style="margin:0">Atividade com Selo de Inspeção Municipal (S.I.M.) — habilita 14 planilhas no P.A.C.</span></label>
-        <div class="actions"><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="cOk">Salvar</button></div>`);
-      $('#cEst').onchange = () => { $('#cEstNovoWrap').style.display = $('#cEst').value === '__novo__' ? 'block' : 'none'; };
-    };
-    document.addEventListener('click', async function h(ev) {
-      if (ev.target.id !== 'cOk') return;
+    $('#novoCtr').onclick = () => abrirContratoModal(null, ests);
+    body.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => abrirContratoModal(contratos.find(x => x.id === b.dataset.edit), ests));
+  }
+
+  function abrirContratoModal(c, ests) {
+    const ed = !!c;
+    openModal(`<h2>${ed ? 'Editar' : 'Novo'} contrato</h2>
+      <div class="row"><label class="field"><span>Número</span><input id="cNum" value="${ed ? esc(c.numero) : ''}"></label>
+        <label class="field"><span>Estabelecimento</span><select id="cEst">
+          <option value="">— nenhum —</option>
+          ${ests.map(e => `<option value="${e.id}" ${ed && c.estabelecimentoId === e.id ? 'selected' : ''}>${esc(e.nome)}</option>`).join('')}
+          <option value="__novo__">+ Novo estabelecimento…</option>
+        </select></label></div>
+      <div id="cEstNovoWrap" style="display:none">
+        <div class="row"><label class="field"><span>Nome do estabelecimento</span><input id="cEstNome"></label>
+          <label class="field"><span>CNPJ (opcional)</span><input id="cEstCnpj"></label></div>
+      </div>
+      <label class="field"><span>Objeto do contrato</span><input id="cObj" value="${ed ? esc(c.objeto || '') : ''}"></label>
+      <div class="row"><label class="field"><span>Vigência — início</span><input type="date" id="cIni" value="${ed ? (c.vigenciaInicio || '') : ''}"></label>
+        <label class="field"><span>Vigência — fim</span><input type="date" id="cFim" value="${ed ? (c.vigenciaFim || '') : ''}"></label></div>
+      <label class="field" style="display:flex;gap:8px;align-items:center">
+        <input type="checkbox" id="cSim" style="width:auto" ${ed && c.sim ? 'checked' : ''}><span style="margin:0">Atividade com Selo de Inspeção Municipal (S.I.M.) — habilita 14 planilhas no P.A.C.</span></label>
+      <div class="actions"><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="cOk">Salvar</button></div>`);
+    $('#cEst').onchange = () => { $('#cEstNovoWrap').style.display = $('#cEst').value === '__novo__' ? 'block' : 'none'; };
+    $('#cOk').onclick = async () => {
       const numero = $('#cNum').value.trim(); if (!numero) return toast('Informe o número.', true);
       try {
-        // Estabelecimento: usa o selecionado, ou cria um novo inline.
         let estId = $('#cEst').value;
         if (estId === '__novo__') {
           const nome = $('#cEstNome').value.trim();
@@ -493,12 +524,13 @@
           const r = await DB.saveEstabelecimento({ nome, cnpj: $('#cEstCnpj').value.trim() });
           estId = r.saved;
         }
-        await DB.saveContrato({ numero, estabelecimentoId: estId || null, objeto: $('#cObj').value.trim(),
-          vigenciaInicio: $('#cIni').value || null, vigenciaFim: $('#cFim').value || null, sim: $('#cSim').checked });
+        const payload = { numero, estabelecimentoId: estId || null, objeto: $('#cObj').value.trim(),
+          vigenciaInicio: $('#cIni').value || null, vigenciaFim: $('#cFim').value || null, sim: $('#cSim').checked };
+        if (ed) payload.id = c.id;
+        await DB.saveContrato(payload);
         closeModal(); toast('Contrato salvo.'); await refreshMe(); await carregarContratos(); cadContratos();
       } catch (e) { toast(e.message, true); }
-      document.removeEventListener('click', h);
-    });
+    };
   }
 
   async function cadAcessos() {
