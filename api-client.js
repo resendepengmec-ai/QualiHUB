@@ -171,6 +171,13 @@ const DB = {
   getPerfil:          ()      => API.get('/perfil'),
   savePerfil:         (p)     => API.post('/perfil', { perfil: p }),
 
+  // P.A.C.
+  getPlanilhaTipos:       ()        => API.get('/planilha-tipos'),
+  getPlanilhasDoContrato: (cid)     => API.get(`/contratos/${cid}/planilhas`),
+  getRegistrosPac:        (cid, t)  => API.get(`/contratos/${cid}/pac` + (t ? `?planilha=${t}` : '')),
+  criarRegistroPac:       (r)       => API.post('/pac', { registro: r }),
+  decidirRegistroPac:     (id, aprovado, observacao) => API.patch(`/pac/${id}/decidir`, { aprovado, observacao }),
+
   // Plataforma (SaaS) — administradores de cliente (só master)
   getPlatformAdmins:  ()      => API.get('/platform/admins'),
   getPlatformTree:    ()      => API.get('/platform/tree'),
@@ -198,6 +205,16 @@ function statusOcorrencia(o) {
   return { key: 'aberta', label: 'Em aberto' };
 }
 const GRAVIDADES = ['baixa', 'média', 'alta', 'crítica'];
+
+// Regimes de inspeção (o conjunto de planilhas do P.A.C. depende deles).
+const REGIMES = [
+  { key: 'varejo_rdc216', label: 'Varejo (RDC 216 / Anvisa)', curto: 'RDC216' },
+  { key: 'sie_agrodefesa', label: 'SIE (Agrodefesa)', curto: 'SIE' },
+  { key: 'sif', label: 'SIF (Federal)', curto: 'SIF' },
+  { key: 'sim_municipal', label: 'SIM (Municipal)', curto: 'SIM' },
+];
+const REGIME_LABEL = Object.fromEntries(REGIMES.map(r => [r.key, r]));
+const NATUREZAS = { produto: 'Produto', meio: 'Meio', saude: 'Saúde ocupacional' };
 
 // ── Captura de foto com rótulo de data/hora + geolocalização ──────
 // Helper ÚNICO para TODOS os módulos (ocorrências e demais). Ao capturar,
