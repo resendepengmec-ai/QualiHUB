@@ -211,10 +211,14 @@ function _getPos() {
     navigator.geolocation.getCurrentPosition(
       p => { _lastPos = { lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy }; _lastPosAt = Date.now(); resolve(_lastPos); },
       () => resolve(null),
-      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 300000 }
     );
   });
 }
+// Dispara o pedido de permissão/posição cedo (ao abrir o formulário), pra que
+// a localização já esteja pronta quando a foto for capturada — importante no
+// celular, onde o GPS pode demorar a fixar.
+function pedirLocalizacao() { return _getPos(); }
 function _stampImage(dataUrl, capturedAt, pos) {
   return new Promise(resolve => {
     const img = new Image();

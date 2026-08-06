@@ -246,10 +246,13 @@
       <div class="fotos" id="fPrev"></div>
       <div style="margin-top:8px"><button class="btn primary" id="fSalvar">Registrar ocorrência</button></div>
     </div>`;
+    pedirLocalizacao(); // pede permissão/posição cedo
     let fotos = [];
     $('#fFotos').onchange = async (e) => {
-      for (const file of [...e.target.files]) { if (fotos.length >= 3) break; fotos.push(await fileToFoto(file)); }
+      toast('Processando foto…');
+      for (const file of [...e.target.files]) { if (fotos.length >= 3) break; fotos.push(await capturarFoto(file)); }
       $('#fPrev').innerHTML = fotos.map(f => `<img src="${f.dataUrl}" alt="">`).join('');
+      if (fotos.some(f => f.lat == null)) toast('Foto salva sem localização — verifique a permissão de local do navegador.', true);
       e.target.value = '';
     };
     $('#fSalvar').onclick = async () => {
@@ -277,9 +280,13 @@
       <div class="fotos" id="rPrev"></div>
       <div class="actions"><button class="btn" id="rCancel">Cancelar</button><button class="btn primary" id="rOk">Concluir correção</button></div>`);
     let fotos = [];
+    pedirLocalizacao();
     $('#rFotos').onchange = async (e) => {
-      for (const file of [...e.target.files]) { if (fotos.length >= 3) break; fotos.push(await fileToFoto(file)); }
-      $('#rPrev').innerHTML = fotos.map(f => `<img src="${f.dataUrl}" alt="">`).join(''); e.target.value = '';
+      toast('Processando foto…');
+      for (const file of [...e.target.files]) { if (fotos.length >= 3) break; fotos.push(await capturarFoto(file)); }
+      $('#rPrev').innerHTML = fotos.map(f => `<img src="${f.dataUrl}" alt="">`).join('');
+      if (fotos.some(f => f.lat == null)) toast('Foto salva sem localização — verifique a permissão de local do navegador.', true);
+      e.target.value = '';
     };
     $('#rCancel').onclick = closeModal;
     $('#rOk').onclick = async () => {
@@ -556,6 +563,8 @@
         : `<div class="empty"><strong>Nenhum acesso ainda</strong>Adicione o fiscal, o gestor e os executores deste contrato.</div>`}</div>`;
     $('#aAdd').onclick = async () => {
       const email = $('#aEmail').value.trim(); if (!email.includes('@')) return toast('E-mail inválido.', true);
+      if (acessos.some(a => (a.email || '').toLowerCase() === email.toLowerCase()))
+        return toast('Este e-mail já está atribuído a este contrato.', true);
       try { await DB.addAcesso(cid, { email, papel: $('#aPapel').value, name: $('#aNome').value.trim() });
         toast('Acesso adicionado.'); membrosCache = {}; cadAcessos(); } catch (e) { toast(e.message, true); }
     };

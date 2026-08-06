@@ -170,7 +170,7 @@ textarea { min-height: 84px; resize: vertical; }
 
 /* fotos */
 .fotos { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
-.fotos img { width: 64px; height: 64px; object-fit: cover; border-radius: var(--radius-sm); border: 1px solid var(--line); }
+.fotos img { width: 128px; height: 128px; object-fit: cover; border-radius: var(--radius-sm); border: 1px solid var(--line); }
 
 /* login */
 .login-wrap { min-height: 100vh; display: grid; place-items: center; padding: 20px; }
