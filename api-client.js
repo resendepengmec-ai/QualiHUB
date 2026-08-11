@@ -178,6 +178,13 @@ const DB = {
   criarRegistroPac:       (r)       => API.post('/pac', { registro: r }),
   decidirRegistroPac:     (id, aprovado, observacao) => API.patch(`/pac/${id}/decidir`, { aprovado, observacao }),
 
+  // Equipamentos / controle de temperatura
+  getEquipamentos:        (cid)     => API.get(`/contratos/${cid}/equipamentos`),
+  saveEquipamento:        (cid, e)  => API.post(`/contratos/${cid}/equipamentos`, { equipamento: e }),
+  removeEquipamento:      (id)      => API.delete(`/equipamentos/${id}`),
+  regenerarTokenEquip:    (id)      => API.post(`/equipamentos/${id}/regenerar-token`, {}),
+  criarTemperatura:       (contratoId, leituras) => API.post('/pac/temperatura', { contratoId, leituras }),
+
   // Plataforma (SaaS) — administradores de cliente (só master)
   getPlatformAdmins:  ()      => API.get('/platform/admins'),
   getPlatformTree:    ()      => API.get('/platform/tree'),
@@ -215,6 +222,8 @@ const REGIMES = [
 ];
 const REGIME_LABEL = Object.fromEntries(REGIMES.map(r => [r.key, r]));
 const NATUREZAS = { produto: 'Produto', meio: 'Meio', saude: 'Saúde ocupacional' };
+const CATEGORIAS_EQUIP = { camara_fria: 'Câmara fria', freezer: 'Freezer', balcao: 'Balcão', sala_manipulacao: 'Sala de manipulação', expositor: 'Expositor', outro: 'Outro' };
+const IOT_ENDPOINT = QUALI_API_URL + '/api/iot/leitura';
 
 // ── Captura de foto com rótulo de data/hora + geolocalização ──────
 // Helper ÚNICO para TODOS os módulos (ocorrências e demais). Ao capturar,
