@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>QualiHUB — Planos e preços</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .hero { text-align: center; max-width: 640px; margin: 0 auto 28px; }
+    .hero h1 { font-size: 2rem; margin-bottom: 10px; }
+    .plans { display: grid; gap: 14px; }
+    @media (min-width: 800px) { .plans { grid-template-columns: repeat(3, 1fr); align-items: start; } }
+    .plan { display: flex; flex-direction: column; }
+    .plan.featured { border: 2px solid var(--primary); }
+    .plan .price { font-size: 2rem; font-weight: 800; letter-spacing: -.03em; margin-top: 6px; }
+    .plan .price small { font-size: .9rem; font-weight: 600; color: var(--muted); }
+    .plan .persensor { font-size: .85rem; color: var(--muted); margin-top: 2px; }
+    .plan ul { list-style: none; padding: 0; margin: 14px 0 0; font-size: .88rem; line-height: 1.9; }
+    .plan ul li::before { content: "✓"; color: var(--ok); font-weight: 800; margin-right: 8px; }
+    .plan .cta { margin-top: 16px; width: 100%; justify-content: center; }
+    .props { display: grid; gap: 12px; margin-top: 26px; }
+    @media (min-width: 720px) { .props { grid-template-columns: repeat(3, 1fr); } }
+    .prop strong { display: block; margin-bottom: 3px; }
+    .compare { margin-top: 26px; text-align: center; }
+  </style>
+</head>
+<body>
+  <header class="appbar">
+    <div class="brand"><span class="mark">QH</span> QualiHUB</div>
+    <span class="spacer"></span>
+    <a class="btn primary sm" href="index.html">Entrar</a>
+  </header>
+
+  <div class="wrap">
+    <div class="hero">
+      <div class="eyebrow">Planos e preços</div>
+      <h1>Qualidade e temperatura num sistema só</h1>
+      <p class="muted">Gestão de RDC 216 / Agrodefesa e monitoramento de temperatura na mesma plataforma —
+        mais barato do que contratar as duas coisas separadas.</p>
+    </div>
+
+    <div class="plans">
+      <div class="card plan">
+        <div class="eyebrow">Starter</div>
+        <div class="muted" style="font-size:.85rem">1 estabelecimento</div>
+        <div class="price">R$ 289 <small>/mês</small></div>
+        <div class="persensor">+ R$ 69 por sensor·mês</div>
+        <ul>
+          <li>RDC 216, P.A.C. e ocorrências</li>
+          <li>Documentos sanitários e RT</li>
+          <li>Relatórios em PDF assinados</li>
+          <li>Até 3 sensores · 3 usuários</li>
+        </ul>
+        <a class="btn primary cta" href="index.html">Começar</a>
+      </div>
+
+      <div class="card plan featured">
+        <span class="chip aberta" style="align-self:flex-start;margin-bottom:6px">Mais usado</span>
+        <div class="eyebrow">Pro</div>
+        <div class="muted" style="font-size:.85rem">Multi-estabelecimento</div>
+        <div class="price">R$ 499 <small>/mês</small></div>
+        <div class="persensor">+ R$ 59 por sensor·mês</div>
+        <ul>
+          <li>Tudo do Starter</li>
+          <li>Relatórios com a sua marca</li>
+          <li>Painel de indicadores</li>
+          <li>Até 10 sensores · usuários ilimitados</li>
+        </ul>
+        <a class="btn primary cta" href="index.html">Começar</a>
+      </div>
+
+      <div class="card plan">
+        <div class="eyebrow">Rede</div>
+        <div class="muted" style="font-size:.85rem">Várias unidades</div>
+        <div class="price">Sob consulta</div>
+        <div class="persensor">volume + suporte dedicado</div>
+        <ul>
+          <li>Tudo do Pro</li>
+          <li>Sensores ilimitados</li>
+          <li>Painel consolidado da rede</li>
+          <li>Onboarding dedicado</li>
+        </ul>
+        <a class="btn cta" href="index.html">Falar com a gente</a>
+      </div>
+    </div>
+
+    <div class="props">
+      <div class="card prop"><strong>Usuários inclusos</strong><span class="muted" style="font-size:.86rem">Cobra por estabelecimento, não por cabeça — ideal pra equipes grandes de manipuladores.</span></div>
+      <div class="card prop"><strong>Sem mínimo de 5 sensores</strong><span class="muted" style="font-size:.86rem">Comece com 1 câmara. Os sensores já vêm com hardware incluso (all-in).</span></div>
+      <div class="card prop"><strong>Pronto pra fiscalização</strong><span class="muted" style="font-size:.86rem">Temperatura conforme/não-conforme automática e relatórios assinados e rastreáveis.</span></div>
+    </div>
+
+    <div class="compare">
+      <p class="muted" style="font-size:.9rem;max-width:640px;margin:0 auto">
+        Contratar software de qualidade + monitoramento separados sai por cerca de
+        <strong>R$ 600–800/mês</strong> numa unidade pequena. No QualiHUB, a mesma operação
+        (1 unidade, 3 sensores) começa em <strong>~R$ 496/mês</strong> — num sistema só.</p>
+      <a class="btn primary" href="index.html" style="margin-top:16px">Entrar no QualiHUB</a>
+      <p class="muted" style="font-size:.72rem;margin-top:18px">Valores de referência; a proposta final é ajustada ao porte da operação.</p>
+    </div>
+  </div>
+</body>
+</html>
