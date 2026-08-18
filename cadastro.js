@@ -73,7 +73,7 @@
     body.innerHTML = `<div style="margin-bottom:14px"><button class="btn primary" id="novoCtr">Novo contrato</button></div>
       ${contratos.length ? contratos.map(c => `<div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
-          <div><strong>${esc(c.numero)}</strong> ${(c.regimes || []).map(k => `<span class="chip sim">${(REGIME_LABEL[k] || {}).curto || k}</span>`).join(' ')}
+          <div><strong>${esc(c.numero)}</strong> ${(c.regimes || []).map(k => `<span class="chip sim">${(REGIME_LABEL[k] || {}).curto || k}</span>`).join(' ')} ${c.classificacao ? `<span class="chip neutral">${esc(CLASSIFICACAO_LABEL[c.classificacao] || c.classificacao)}</span>` : ''}
             <div class="muted" style="font-size:.82rem">${esc(c.objeto || '')}${c.estabelecimentoNome ? ' · ' + esc(c.estabelecimentoNome) : ''}${c.vigenciaInicio ? ' · vigência ' + fmtDate(c.vigenciaInicio) + '–' + fmtDate(c.vigenciaFim) : ''}</div></div>
           <div style="display:flex;gap:8px;align-items:center;flex:none">
             ${podeEditar(c) ? `<button class="btn sm" data-edit="${c.id}">Editar</button>` : ''}
@@ -97,6 +97,10 @@
           <label class="field"><span>CNPJ (opcional)</span><input id="cEstCnpj"></label></div>
       </div>
       <label class="field"><span>Objeto do contrato</span><input id="cObj" value="${ed ? esc(c.objeto || '') : ''}"></label>
+      <label class="field"><span>Classificação (tipo de estabelecimento)</span>
+        <select id="cClass"><option value="">— selecione —</option>
+          ${CLASSIFICACOES.map(cl => `<option value="${cl.key}" ${ed && c.classificacao === cl.key ? 'selected' : ''}>${cl.label}</option>`).join('')}
+        </select></label>
       <div class="row"><label class="field"><span>Vigência — início</span><input type="date" id="cIni" value="${ed ? (c.vigenciaInicio || '') : ''}"></label>
         <label class="field"><span>Vigência — fim</span><input type="date" id="cFim" value="${ed ? (c.vigenciaFim || '') : ''}"></label></div>
       <div class="field"><span style="display:block;font-size:.8rem;font-weight:600;margin-bottom:6px">Regimes de inspeção (marque todos que se aplicam)</span>
@@ -118,6 +122,7 @@
         }
         const payload = { numero, estabelecimentoId: estId || null, objeto: $('#cObj').value.trim(),
           vigenciaInicio: $('#cIni').value || null, vigenciaFim: $('#cFim').value || null,
+          classificacao: $('#cClass').value || null,
           regimes: [...document.querySelectorAll('.cReg:checked')].map(x => x.value) };
         if (ed) payload.id = c.id;
         await DB.saveContrato(payload);

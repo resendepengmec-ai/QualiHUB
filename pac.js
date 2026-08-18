@@ -37,6 +37,8 @@
     if (c.tipo === 'numero') return `<input id="${id}" type="number" step="any">`;
     if (c.tipo === 'data') return `<input id="${id}" type="date">`;
     if (c.tipo === 'sim_nao') return `<select id="${id}"><option value="">—</option><option>Sim</option><option>Não</option></select>`;
+    if (c.tipo === 'cnc') return `<select id="${id}"><option value="">—</option><option value="C">C — Conforme</option><option value="NC">NC — Não conforme</option><option value="NA">NA — Não se aplica</option></select>`;
+    if (c.tipo === 'select') return `<select id="${id}"><option value="">—</option>${(c.opcoes || []).map(o => `<option>${o}</option>`).join('')}</select>`;
     return `<input id="${id}">`;
   }
   function abrirRegistroPac(cid, tipo) {

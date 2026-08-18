@@ -222,6 +222,17 @@ const REGIMES = [
 ];
 const REGIME_LABEL = Object.fromEntries(REGIMES.map(r => [r.key, r]));
 const NATUREZAS = { produto: 'Produto', meio: 'Meio', saude: 'Saúde ocupacional' };
+const CLASSIFICACOES = [
+  { key: 'restaurante', label: 'Restaurante' },
+  { key: 'lanchonete', label: 'Lanchonete' },
+  { key: 'padaria', label: 'Padaria / Confeitaria' },
+  { key: 'supermercado', label: 'Supermercado / Mercearia' },
+  { key: 'acougue', label: 'Açougue' },
+  { key: 'salgadeira', label: 'Salgadeira / Cozinha industrial' },
+  { key: 'distribuidora', label: 'Distribuidora' },
+  { key: 'outro', label: 'Outro' },
+];
+const CLASSIFICACAO_LABEL = Object.fromEntries(CLASSIFICACOES.map(c => [c.key, c.label]));
 const CATEGORIAS_EQUIP = { camara_fria: 'Câmara fria', freezer: 'Freezer', balcao: 'Balcão', sala_manipulacao: 'Sala de manipulação', expositor: 'Expositor', outro: 'Outro' };
 const IOT_ENDPOINT = QUALI_API_URL + '/api/iot/leitura';
 
