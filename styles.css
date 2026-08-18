@@ -11,9 +11,9 @@
   --muted:      #5E6B65;
   --line:       #E1E6E2;
 
-  --primary:    #0E7C66;   /* teal-verde: inspeção/sanitário */
-  --primary-ink:#0A5F4E;
-  --primary-wash:#E4F1EC;
+  --primary:    #45912E;   /* verde Qualiservice */
+  --primary-ink:#2E6620;
+  --primary-wash:#EAF4E1;
 
   /* status */
   --ok:      #2E9E6B;  --ok-wash:      #E5F3EC;
@@ -180,6 +180,10 @@ textarea { min-height: 84px; resize: vertical; }
 .login-card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); padding: 34px; width: 100%; max-width: 400px; text-align: center; }
 .login-card .mark { width: 46px; height: 46px; border-radius: 12px; margin: 0 auto 14px; background: linear-gradient(150deg, var(--primary), var(--primary-ink)); display: grid; place-items: center; color: #fff; font-weight: 800; }
 .g-btn { width: 100%; justify-content: center; margin-top: 18px; }
+.brand-tagline { font-size: .8rem; color: var(--muted); display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap; }
+.brand-tagline strong { color: var(--primary-ink); font-weight: 700; }
+.brand-tagline .flags { display: inline-flex; gap: 4px; }
+.brand-tagline .flags svg { border-radius: 2px; box-shadow: 0 0 0 .5px rgba(0,0,0,.12); vertical-align: -1px; }
 .login-alt { margin-top: 16px; font-size: .82rem; }
 .login-alt summary { cursor: pointer; color: var(--muted); }
 .login-alt .row { margin-top: 10px; }
@@ -216,3 +220,7 @@ textarea { min-height: 84px; resize: vertical; }
   .kpi .n { font-size: 1.7rem; }
   .fotos img { width: 104px; height: 104px; }
 }
+
+/* Assinatura "powered by Qualiservice" na appbar */
+.brand .poweredby { font-size: .68rem; font-weight: 500; color: var(--muted); letter-spacing: 0; }
+@media (max-width: 640px) { .brand .poweredby { display: none; } }

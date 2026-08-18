@@ -48,7 +48,7 @@
       const geradoEm = new Date(d.geradoEm).toLocaleString('pt-BR');
 
       const header = () => {
-        const emp = [{ text: cab.razaoSocial || cab.nomeFantasia || 'QualiHUB', bold: true, fontSize: 12, color: '#0a5f4e' }];
+        const emp = [{ text: cab.razaoSocial || cab.nomeFantasia || 'QShub', bold: true, fontSize: 12, color: '#2E6620' }];
         if (cab.nomeFantasia && cab.razaoSocial) emp.push({ text: cab.nomeFantasia, fontSize: 8, color: '#5e6b65' });
         if (cab.cnpj) emp.push({ text: 'CNPJ: ' + cab.cnpj, fontSize: 8, color: '#5e6b65' });
         if (cab.endereco) emp.push({ text: cab.endereco, fontSize: 8, color: '#5e6b65' });
@@ -58,7 +58,7 @@
         cols.push({ stack: emp, width: '*' });
         return { margin: [40, 22, 40, 0], stack: [
           { columns: cols, columnGap: 10 },
-          { canvas: [{ type: 'line', x1: 0, y1: 6, x2: 515, y2: 6, lineWidth: 0.7, lineColor: '#0e7c66' }] },
+          { canvas: [{ type: 'line', x1: 0, y1: 6, x2: 515, y2: 6, lineWidth: 0.7, lineColor: '#45912E' }] },
         ] };
       };
       const footer = (currentPage, pageCount) => ({ margin: [40, 8, 40, 0], columns: [
@@ -77,7 +77,7 @@
         linha.push('Criada por ' + (o.criadoPorNome || o.criadoPor || '-') + (o.criadoEm ? ' em ' + new Date(o.criadoEm).toLocaleDateString('pt-BR') : ''));
         linha.push('Atribuida a ' + (o.atribuidoA || '-'));
         const c = [
-          { text: [{ text: n + '. ', bold: true, color: '#0a5f4e' }, { text: o.descricao || '', bold: true }], fontSize: 10.5 },
+          { text: [{ text: n + '. ', bold: true, color: '#2E6620' }, { text: o.descricao || '', bold: true }], fontSize: 10.5 },
           { text: linha.join('  -  '), fontSize: 8, color: '#5e6b65', margin: [0, 2, 0, 0] },
         ];
         const fotos = (o.fotos || []).concat(o.fotosExecucao || []).filter(f => f && f.dataUrl);
@@ -98,7 +98,7 @@
       const chaves = Object.keys(grupos);
       if (!d.ocorrencias.length) body.push({ text: 'Nenhuma ocorrencia no escopo selecionado.', italics: true, color: '#8a938e' });
       chaves.forEach((key, gi) => {
-        if (chaves.length > 1) body.push({ text: 'Contrato ' + key, fontSize: 11, bold: true, color: '#0e7c66', pageBreak: gi > 0 ? 'before' : undefined, margin: [0, gi > 0 ? 0 : 4, 0, 8] });
+        if (chaves.length > 1) body.push({ text: 'Contrato ' + key, fontSize: 11, bold: true, color: '#45912E', pageBreak: gi > 0 ? 'before' : undefined, margin: [0, gi > 0 ? 0 : 4, 0, 8] });
         let n = 1; grupos[key].forEach(o => body.push(bloco(o, n++)));
       });
       body.push({ canvas: [{ type: 'line', x1: 0, y1: 6, x2: 515, y2: 6, lineWidth: 0.5, lineColor: '#cccccc' }], margin: [0, 8, 0, 0] });
