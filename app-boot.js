@@ -12,7 +12,9 @@
     $('#btnSair').onclick = () => logout();
 
     await carregarContratos();
-    montarNav();
+    const home = () => irPara('dashboard');
+    const bh = $('#brandHome'); if (bh) { bh.onclick = home; bh.style.cursor = 'pointer'; }
+    const btnH = $('#btnHome'); if (btnH) btnH.onclick = home;
     irPara(location.hash.replace('#', '') || 'dashboard');
   })();
 
@@ -32,24 +34,11 @@
     sel.onchange = () => { setContratoAtual(sel.value); irPara(active); };
   }
 
-  // ── navegação ─────────────────────────────────────────────────
-  const TABS = [
-    { id: 'dashboard',   label: 'Dashboard' },
-    { id: 'ocorrencias', label: 'Ocorrências' },
-    { id: 'pac',         label: 'P.A.C.', when: () => !!getContratoAtual() },
-    { id: 'cadastro',    label: 'Cadastro', when: isAdministradorAnywhere },
-    { id: 'empresa',     label: 'Minha Empresa', when: () => isMaster() || getCurrentUser().role === 'admin' },
-    { id: 'clientes',    label: 'Clientes', when: isMaster },
-  ];
+  // ── navegação (sem barra de abas; hub + botão Início) ──────────
   let active = 'dashboard';
-  function montarNav() {
-    $('#nav').innerHTML = TABS.filter(t => !t.when || t.when())
-      .map(t => `<button data-tab="${t.id}">${t.label}</button>`).join('');
-    $('#nav').querySelectorAll('button').forEach(b => b.onclick = () => irPara(b.dataset.tab));
-  }
   function irPara(tab) {
     active = tab; location.hash = tab;
-    $('#nav').querySelectorAll('button').forEach(b => b.setAttribute('aria-current', String(b.dataset.tab === tab)));
+    const bh = $('#btnHome'); if (bh) bh.style.display = (tab === 'dashboard') ? 'none' : '';
     ({ dashboard: renderDashboard, ocorrencias: renderOcorrencias, pac: renderPac, cadastro: renderCadastro, empresa: renderEmpresa, clientes: renderClientes }[tab] || renderDashboard)();
   }
 

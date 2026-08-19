@@ -8,7 +8,8 @@
 </head>
 <body>
   <header class="appbar">
-    <div class="brand"><span class="brandname">QShub</span><img src="logo.png" alt="Qualiservice" class="brandlogo"></div>
+    <button class="btn ghost sm" id="btnHome" style="display:none">‹ Início</button>
+    <div class="brand" id="brandHome" title="Ir para o início"><span class="brandname">QShub</span><span class="poweredby">powered by</span><img src="logo.png" alt="Qualiservice" class="brandlogo"></div>
     <div class="contrato-select">
       <label for="selContrato">Contrato</label>
       <select id="selContrato"></select>
@@ -18,7 +19,6 @@
     <button class="btn sm ghost" id="btnSair">Sair</button>
   </header>
 
-  <nav class="nav" id="nav"></nav>
   <main class="wrap" id="view"></main>
 
   <div class="modal-bg" id="modalBg"><div class="modal" id="modal"></div></div>

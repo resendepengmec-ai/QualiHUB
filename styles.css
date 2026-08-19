@@ -252,3 +252,13 @@ textarea { min-height: 84px; resize: vertical; }
 .brandlogo { height: 18px; width: auto; margin-left: 9px; vertical-align: middle; }
 .loginlogo { width: min(240px, 74%); height: auto; display: block; margin: 0 auto 4px; }
 @media (max-width: 640px) { .brandlogo { height: 15px; margin-left: 6px; } }
+
+/* Lockup da marca: QShub powered by [logo] */
+.brand { display: flex; align-items: center; gap: 6px; }
+.brand .poweredby { font-size: .6rem; color: var(--muted); font-weight: 500; line-height: 1.05; }
+.brand .brandlogo { margin-left: 0; height: 15px; }
+@media (max-width: 640px) { .brand .poweredby { display: none; } }
+
+/* Acordeão da atividade recente */
+.hubacc { display: flex; align-items: center; justify-content: space-between; width: 100%; background: none; border: 0; padding: 6px 0; margin: 24px 0 8px; cursor: pointer; color: var(--muted); font: inherit; }
+.accchev { color: var(--muted); font-size: .8rem; }

@@ -29,8 +29,8 @@
       </div>
       <div class="eyebrow" style="margin:22px 0 10px">Módulos</div>
       <div class="hubgrid" id="hubMods"></div>
-      <div class="eyebrow" style="margin:24px 0 10px">Atividade recente</div>
-      <div id="hubRec" class="card" style="padding:0"><div class="muted" style="padding:14px 16px">Carregando…</div></div>`;
+      <button class="hubacc" id="recToggle" aria-expanded="false"><span class="eyebrow" style="margin:0">Atividade recente</span><span class="accchev" id="recChev">▸</span></button>
+      <div id="hubRec" class="card" style="padding:0;display:none"><div class="muted" style="padding:14px 16px">Carregando…</div></div>`;
 
     let d = {};
     try { d = await DB.getHomeResumo(); } catch (e) { /* segue com traços */ }
@@ -66,6 +66,12 @@
         <span class="recl">${esc(x.label)}</span>
         <span class="rect">${x.em ? _tempoRel(x.em) : ''}</span>
       </div>`).join('') : `<div class="muted" style="padding:14px 16px">Sem atividade recente.</div>`;
+    $('#recToggle').onclick = () => {
+      const box = $('#hubRec'); const open = box.style.display !== 'none';
+      box.style.display = open ? 'none' : 'block';
+      $('#recChev').textContent = open ? '▸' : '▾';
+      $('#recToggle').setAttribute('aria-expanded', String(!open));
+    };
   }
 
   function ordenarPorUrgencia(a, b) {
