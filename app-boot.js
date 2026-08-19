@@ -39,7 +39,7 @@
   function irPara(tab) {
     active = tab; location.hash = tab;
     const bh = $('#btnHome'); if (bh) bh.style.display = (tab === 'dashboard') ? 'none' : '';
-    ({ dashboard: renderDashboard, ocorrencias: renderOcorrencias, pac: renderPac, cadastro: renderCadastro, empresa: renderEmpresa, clientes: renderClientes }[tab] || renderDashboard)();
+    ({ dashboard: renderDashboard, ocorrencias: renderOcorrencias, pac: renderPac, temperatura: renderTemperatura, cadastro: renderCadastro, empresa: renderEmpresa, clientes: renderClientes }[tab] || renderDashboard)();
   }
 
   async function getMembros(cid) {

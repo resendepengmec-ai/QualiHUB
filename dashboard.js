@@ -44,7 +44,7 @@
     const mods = [
       { tab: 'ocorrencias', icon: 'bell', nome: 'Ocorrências', desc: 'Não conformidades', pill: (d.ocorrenciasAbertas > 0) ? ['aberta', `${d.ocorrenciasAbertas} abertas`] : ['ok', 'em dia'], show: true },
       { tab: 'pac', icon: 'clipboard', nome: 'P.A.C.', desc: 'Planilhas de autocontrole', pill: ['ok', `${d.pacMes ?? 0} este mês`], show: temContrato },
-      { tab: 'pac', icon: 'thermometer', nome: 'Temperatura', desc: 'Sensores e câmaras', pill: (d.tempFora > 0) ? ['atraso', `${d.sensores ?? 0} sensores · ${d.tempFora} alerta`] : ['neutral', `${d.sensores ?? 0} sensores`], show: temContrato },
+      { tab: 'temperatura', icon: 'thermometer', nome: 'Temperatura', desc: 'Sensores e câmaras', pill: (d.tempFora > 0) ? ['atraso', `${d.sensores ?? 0} sensores · ${d.tempFora} alerta`] : ['neutral', `${d.sensores ?? 0} sensores`], show: temContrato },
       { tab: 'cadastro', icon: 'building', nome: 'Cadastro', desc: 'Contratos e equipamentos', pill: ['neutral', `${d.contratos ?? 0} contratos`], show: isAdministradorAnywhere() },
       { tab: 'empresa', icon: 'badge', nome: 'Minha empresa', desc: 'Perfil e logo', pill: ['neutral', 'branding'], show: isMaster() || u.role === 'admin' },
       { tab: 'clientes', icon: 'users', nome: 'Clientes', desc: 'Administração', pill: ['sim', `${d.clientes ?? 0} clientes`], show: isMaster() },

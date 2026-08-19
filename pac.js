@@ -16,10 +16,19 @@
     const grupos = { produto: [], meio: [], saude: [] };
     data.planilhas.forEach(p => (grupos[p.natureza] || (grupos[p.natureza] = [])).push(p));
     const tipos = {}; data.planilhas.forEach(p => tipos[p.id] = p);
+    const _chipStatus = (p) => {
+      if (!p.status) return ''; // conformidade só quando o backend do item 1 estiver no ar
+      const m = {
+        em_dia: ['ok', 'em dia'], atrasado: ['atraso', 'atrasado'], pendente: ['aberta', 'pendente'],
+        continuo: ['neutral', (p.total || 0) + ' registro' + ((p.total || 0) === 1 ? '' : 's')],
+      }[p.status] || ['neutral', ''];
+      return `<span class="chip ${m[0]}">${m[1]}</span>`;
+    };
     const secao = (nat, titulo) => (grupos[nat] && grupos[nat].length) ? `
       <div class="eyebrow" style="margin:18px 0 8px">${titulo}</div>
       ${grupos[nat].map(p => `<div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:10px">
-        <div><strong>${esc(p.nome)}</strong><div class="muted" style="font-size:.8rem">${esc(p.periodicidade || '')}</div></div>
+        <div style="min-width:0"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><strong>${esc(p.nome)}</strong>${_chipStatus(p)}</div>
+          <div class="muted" style="font-size:.8rem">${esc(p.periodicidade || '')}</div></div>
         <div style="display:flex;gap:8px;flex:none">
           <button class="btn sm" data-hist="${p.id}">Registros</button>
           <button class="btn primary sm" data-novo="${p.id}">Novo registro</button>
@@ -134,4 +143,45 @@
       try { await DB.criarTemperatura(cid, leituras); closeModal(); toast('Temperatura registrada — aguardando aprovação do gestor.'); }
       catch (e) { toast(e.message, true); $('#tOk').disabled = false; }
     };
+  }
+
+  // ── Tela dedicada de Temperatura (módulo próprio) ──────────────
+  async function renderTemperatura() {
+    const cid = getContratoAtual();
+    view.innerHTML = `<div class="view-head"><div><div class="eyebrow">Monitoramento</div><h1>Temperatura</h1>
+      <p class="muted" style="font-size:.86rem;margin:.3rem 0 0">Câmaras, balcões e sensores com conformidade automática (manual e IoT).</p></div>
+      <button class="btn primary" id="tNovo">Novo registro</button></div>
+      <div id="tempBody" class="muted">Carregando…</div>`;
+    if (!cid) return $('#tempBody').innerHTML = `<div class="empty"><strong>Escolha um contrato</strong>Selecione um contrato acima para ver a temperatura.</div>`;
+    $('#tNovo').onclick = () => abrirTemperatura(cid);
+    let eqs = [], regs = [];
+    try { [eqs, regs] = await Promise.all([DB.getEquipamentos(cid), DB.getRegistrosPac(cid, 'pt-temperatura')]); }
+    catch (e) { return $('#tempBody').innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+    const ult = {};
+    regs.forEach(r => (r.dados?.leituras || []).forEach(l => {
+      if (!ult[l.equipamentoId] || (r.criadoEm || 0) > ult[l.equipamentoId].em) ult[l.equipamentoId] = { valor: l.valor, conforme: l.conforme, em: r.criadoEm || 0, origem: r.origem };
+    }));
+    const modoL = { manual: 'Manual', iot: 'IoT', ambos: 'Manual + IoT' };
+    const cards = eqs.length ? eqs.map(e => {
+      const u = ult[e.id];
+      const faixa = (e.limiteMin != null || e.limiteMax != null) ? `${e.limiteMin ?? '-∞'} a ${e.limiteMax ?? '+∞'}°C` : 'sem limite';
+      const chip = u ? (u.conforme ? '<span class="chip ok">conforme</span>' : '<span class="chip atraso">não conforme</span>') : '<span class="chip aberta">sem leitura</span>';
+      return `<div class="card"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+        <div><strong>${esc(e.nome)}</strong> <span class="chip neutral">${esc(CATEGORIAS_EQUIP[e.categoria] || e.categoria)}</span>
+          <div class="muted" style="font-size:.82rem;margin-top:2px">Faixa ${faixa} · ${modoL[e.modo] || e.modo}${e.freqPorDia ? ' · ' + e.freqPorDia + '×/dia' : ''}</div></div>
+        <div style="text-align:right;flex:none">${chip}
+          <div style="font-size:1.3rem;font-weight:800;color:${u ? (u.conforme ? 'var(--ok)' : 'var(--danger)') : 'var(--muted)'}">${u ? u.valor + '°C' : '—'}</div>
+          <div class="muted" style="font-size:.72rem">${u ? ((u.origem === 'iot' ? 'IoT · ' : 'Manual · ') + _tempoRel(u.em)) : 'aguardando'}</div></div>
+      </div></div>`;
+    }).join('') : `<div class="empty"><strong>Nenhum equipamento</strong>Cadastre câmaras/balcões/salas em Cadastro → Equipamentos.</div>`;
+    const lista = regs.length ? regs.slice(0, 12).map(r => {
+      const conf = r.dados?.conformeGeral ? '<span class="chip ok">conforme</span>' : '<span class="chip atraso">não conforme</span>';
+      const org = `<span class="chip neutral">${r.origem === 'iot' ? 'IoT' : 'Manual'}</span>`;
+      const leit = (r.dados?.leituras || []).map(l => `${esc(l.nome)}: <b style="color:${l.conforme ? 'var(--ok)' : 'var(--danger)'}">${esc(l.valor)}°C</b>`).join(' · ');
+      return `<div class="card" style="box-shadow:none;border:1px solid var(--line)">
+        <div style="display:flex;justify-content:space-between;align-items:center">${conf} ${org}<span class="muted" style="font-size:.76rem">${r.criadoEm ? new Date(r.criadoEm).toLocaleString('pt-BR') : ''}</span></div>
+        <div style="font-size:.85rem;margin-top:6px">${leit || '—'}</div></div>`;
+    }).join('') : `<div class="empty"><strong>Sem leituras</strong>Lance a primeira em "Novo registro".</div>`;
+    $('#tempBody').innerHTML = `<div class="eyebrow" style="margin:6px 0 8px">Equipamentos</div>${cards}
+      <div class="eyebrow" style="margin:22px 0 8px">Leituras recentes</div>${lista}`;
   }
