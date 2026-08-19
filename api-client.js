@@ -165,6 +165,7 @@ const DB = {
 
   // Dashboard
   getStats:           (cid)   => API.get('/stats' + (cid ? `?contrato=${cid}` : '')),
+  getHomeResumo:      ()      => API.get('/home/resumo'),
   getRelatorioOcorrencias: (q) => API.get('/relatorios/ocorrencias' + (q ? `?${q}` : '')),
 
   // Perfil da empresa (cabeçalho dos PDFs)
