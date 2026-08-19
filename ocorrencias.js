@@ -96,7 +96,7 @@
           <option value="">— escolha um membro do contrato —</option>
           ${membros.map(m => `<option value="${esc(m.email)}">${esc(m.name || m.email)} · ${esc((PAPEIS[m.papel]||{}).label || m.papel)}</option>`).join('')}
         </select></label>
-      <label class="field"><span>Fotos (até 3)</span><input type="file" id="fFotos" accept="image/*" capture="environment" multiple></label>
+      <label class="field"><span>Fotos (até 3)</span><input type="file" id="fFotos" accept="image/*" multiple></label>
       <div class="fotos" id="fPrev"></div>
       <div style="margin-top:8px"><button class="btn primary" id="fSalvar">Registrar ocorrência</button></div>
     </div>`;
@@ -130,7 +130,7 @@
       <p class="muted" style="font-size:.85rem;margin:.3rem 0 1rem">Você é o responsável por esta correção. Registre o que foi feito.</p>
       <label class="field"><span>Data de execução</span><input type="date" id="rData" value="${new Date().toISOString().slice(0,10)}"></label>
       <label class="field"><span>Descrição da execução</span><textarea id="rDesc" placeholder="O que foi feito para corrigir"></textarea></label>
-      <label class="field"><span>Fotos (até 3)</span><input type="file" id="rFotos" accept="image/*" capture="environment" multiple></label>
+      <label class="field"><span>Fotos (até 3)</span><input type="file" id="rFotos" accept="image/*" multiple></label>
       <div class="fotos" id="rPrev"></div>
       <div class="actions"><button class="btn" id="rCancel">Cancelar</button><button class="btn primary" id="rOk">Concluir correção</button></div>`);
     let fotos = [];
