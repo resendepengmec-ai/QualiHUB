@@ -48,7 +48,15 @@
       <label class="field"><span>Coordenadas (lat, long — padrão Google Maps)</span>
         <input id="eCoord" placeholder="-18.16572, -47.94220" value="${esc(coord)}"></label>
       <p class="muted" style="font-size:.76rem;margin-top:-6px">No Google Maps, clique com o botão direito no ponto e clique nas coordenadas para copiar; cole aqui.</p>
+      <label class="field"><span>Foto do estabelecimento (opcional)</span><input type="file" id="eFoto" accept="image/*"></label>
+      <div id="eFotoPrev">${ed && e.foto ? `<img src="${e.foto}" style="max-height:80px;border-radius:8px;border:1px solid var(--line)">` : ''}</div>
       <div class="actions"><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="eOk">Salvar</button></div>`);
+    let foto = ed ? (e.foto || null) : null;
+    $('#eFoto').onchange = async (ev) => {
+      if (!ev.target.files[0]) return;
+      try { foto = await _lerLogo(ev.target.files[0]); $('#eFotoPrev').innerHTML = `<img src="${foto}" style="max-height:80px;border-radius:8px;border:1px solid var(--line)">`; }
+      catch (err) { toast(err.message, true); }
+    };
     $('#eOk').onclick = async () => {
       const nome = $('#eNome').value.trim(); if (!nome) return toast('Informe o nome.', true);
       let lat = null, lng = null;
@@ -59,7 +67,7 @@
           return toast('Coordenadas inválidas. Use: -18.16572, -47.94220', true);
         lat = p[0]; lng = p[1];
       }
-      const payload = { nome, cnpj: $('#eCnpj').value.trim(), endereco: $('#eEnd').value.trim(), lat, lng };
+      const payload = { nome, cnpj: $('#eCnpj').value.trim(), endereco: $('#eEnd').value.trim(), lat, lng, foto };
       if (ed) payload.id = e.id;
       try { await DB.saveEstabelecimento(payload); closeModal(); toast('Estabelecimento salvo.'); cadEstabelecimentos(); }
       catch (err) { toast(err.message, true); }
@@ -74,7 +82,7 @@
       ${contratos.length ? contratos.map(c => `<div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
           <div><strong>${esc(c.numero)}</strong> ${(c.regimes || []).map(k => `<span class="chip sim">${(REGIME_LABEL[k] || {}).curto || k}</span>`).join(' ')} ${c.classificacao ? `<span class="chip neutral">${esc(CLASSIFICACAO_LABEL[c.classificacao] || c.classificacao)}</span>` : ''}
-            <div class="muted" style="font-size:.82rem">${esc(c.objeto || '')}${c.estabelecimentoNome ? ' · ' + esc(c.estabelecimentoNome) : ''}${c.vigenciaInicio ? ' · vigência ' + fmtDate(c.vigenciaInicio) + '–' + fmtDate(c.vigenciaFim) : ''}</div></div>
+            <div class="muted" style="font-size:.82rem">${esc(c.objeto || '')}${c.estabelecimentoNome ? ' · ' + esc(c.estabelecimentoNome) : ''}${c.rt && c.rt.nome ? ' · RT ' + esc(c.rt.nome) : ''}${c.vigenciaInicio ? ' · vigência ' + fmtDate(c.vigenciaInicio) + '–' + fmtDate(c.vigenciaFim) : ''}</div></div>
           <div style="display:flex;gap:8px;align-items:center;flex:none">
             ${podeEditar(c) ? `<button class="btn sm" data-edit="${c.id}">Editar</button>` : ''}
           </div></div></div>`).join('')
@@ -101,6 +109,8 @@
         <select id="cClass"><option value="">— selecione —</option>
           ${CLASSIFICACOES.map(cl => `<option value="${cl.key}" ${ed && c.classificacao === cl.key ? 'selected' : ''}>${cl.label}</option>`).join('')}
         </select></label>
+      <div class="row"><label class="field"><span>Responsável Técnico (nome)</span><input id="cRtNome" value="${ed && c.rt ? esc(c.rt.nome || '') : ''}" placeholder="Ex.: Dra. Fulana de Tal"></label>
+        <label class="field"><span>Conselho (CRMV/CRQ)</span><input id="cRtConselho" value="${ed && c.rt ? esc(c.rt.conselho || '') : ''}" placeholder="Ex.: CRMV-GO 1234"></label></div>
       <div class="row"><label class="field"><span>Vigência — início</span><input type="date" id="cIni" value="${ed ? (c.vigenciaInicio || '') : ''}"></label>
         <label class="field"><span>Vigência — fim</span><input type="date" id="cFim" value="${ed ? (c.vigenciaFim || '') : ''}"></label></div>
       <div class="field"><span style="display:block;font-size:.8rem;font-weight:600;margin-bottom:6px">Regimes de inspeção (marque todos que se aplicam)</span>
@@ -123,6 +133,7 @@
         const payload = { numero, estabelecimentoId: estId || null, objeto: $('#cObj').value.trim(),
           vigenciaInicio: $('#cIni').value || null, vigenciaFim: $('#cFim').value || null,
           classificacao: $('#cClass').value || null,
+          rt: { nome: $('#cRtNome').value.trim(), conselho: $('#cRtConselho').value.trim() },
           regimes: [...document.querySelectorAll('.cReg:checked')].map(x => x.value) };
         if (ed) payload.id = c.id;
         await DB.saveContrato(payload);

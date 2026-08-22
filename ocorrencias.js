@@ -26,8 +26,9 @@
   function cardOcorrencia(o, opts = {}) {
     const st = statusOcorrencia(o);
     const g  = (o.gravidade || 'baixa').toLowerCase();
-    const podeResolver = opts.resolver && o.estado !== 'concluida' &&
-      (o.atribuidoA || '').toLowerCase() === (getCurrentUser().email || '').toLowerCase();
+    const meu = (getCurrentUser().email || '').toLowerCase();
+    const podeResolver = opts.resolver && o.estado !== 'concluida' && (o.atribuidoA || '').toLowerCase() === meu;
+    const podeEditar = opts.editar && ['administrador', 'gestor', 'fiscal'].includes(papelNoContrato(o.contratoId));
     return `<div class="card spine s-${st.key}">
       <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start">
         <div>
@@ -37,10 +38,11 @@
         <span class="muted" style="font-size:.78rem">${o.criadoEm ? new Date(o.criadoEm).toLocaleDateString('pt-BR') : ''}</span>
       </div>
       <p style="margin:8px 0 6px;font-weight:600">${esc(o.descricao || '')}</p>
+      ${o.acaoCorretiva ? `<div style="font-size:.85rem;margin:0 0 6px"><span class="muted">Ação corretiva:</span> ${esc(o.acaoCorretiva)}</div>` : ''}
       <div class="muted" style="font-size:.8rem">
         Prazo: <strong>${fmtDate(o.prazoCorrecao)}</strong>
         · Criada por ${esc(o.criadoPorNome || o.criadoPor || '?')}
-        · Atribuída a ${esc(o.atribuidoA || '—')}
+        · Atribuída a ${esc(o.atribuidoA || '—')}${o.editadoEm ? ' · editada por ' + esc(o.editadoPor || '') : ''}
       </div>
       ${Array.isArray(o.fotos) && o.fotos.length ? `<div class="fotos">${o.fotos.map(f => `<img src="${esc(f.dataUrl)}" alt="">`).join('')}</div>` : ''}
       ${o.execucao ? `<div class="card" style="margin-top:10px;box-shadow:none;background:var(--surface-2)">
@@ -48,11 +50,16 @@
         <div style="font-size:.86rem;margin-top:4px">${esc(o.execucao.descricaoExecucao)}</div>
         <div class="muted" style="font-size:.78rem;margin-top:4px">Executada em ${fmtDate(o.execucao.dataExecucao)} por ${esc(o.execucao.porNome || o.execucao.por)}</div>
       </div>` : ''}
-      ${podeResolver ? `<div style="margin-top:12px"><button class="btn primary sm" data-resolver="${o.id}">Registrar correção</button></div>` : ''}
+      ${(podeResolver || podeEditar) ? `<div style="margin-top:12px;display:flex;gap:8px">
+        ${podeEditar ? `<button class="btn ghost sm" data-editar="${o.id}">Editar</button>` : ''}
+        ${podeResolver ? `<button class="btn primary sm" data-resolver="${o.id}">Registrar correção</button>` : ''}
+      </div>` : ''}
     </div>`;
   }
-  function ligarResolver(container) {
+  function ligarAcoes(container, ocs) {
+    const byId = Object.fromEntries((ocs || []).map(o => [o.id, o]));
     container.querySelectorAll('[data-resolver]').forEach(b => b.onclick = () => abrirResolver(b.dataset.resolver));
+    container.querySelectorAll('[data-editar]').forEach(b => b.onclick = () => abrirEditarOcorrencia(byId[b.dataset.editar]));
   }
 
   async function ocAtribuidas() {
@@ -60,9 +67,9 @@
     try {
       const ocs = await DB.getAtribuidas();
       body.innerHTML = ocs.length
-        ? ocs.sort(ordenarPorUrgencia).map(o => cardOcorrencia(o, { resolver: true })).join('')
+        ? ocs.sort(ordenarPorUrgencia).map(o => cardOcorrencia(o, { resolver: true, editar: true })).join('')
         : `<div class="empty"><strong>Nada atribuído a você</strong>Quando alguém atribuir uma correção a você, ela aparece aqui.</div>`;
-      ligarResolver(body);
+      ligarAcoes(body, ocs);
     } catch (e) { body.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
   }
 
@@ -73,55 +80,74 @@
     try {
       const ocs = await DB.getOcorrenciasContrato(cid);
       body.innerHTML = ocs.length
-        ? ocs.sort(ordenarPorUrgencia).map(o => cardOcorrencia(o, { resolver: true })).join('')
+        ? ocs.sort(ordenarPorUrgencia).map(o => cardOcorrencia(o, { resolver: true, editar: true })).join('')
         : `<div class="empty"><strong>Sem ocorrências neste contrato</strong>Registre a primeira na aba “Criar ocorrência”.</div>`;
-      ligarResolver(body);
+      ligarAcoes(body, ocs);
     } catch (e) { body.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+  }
+
+  function _camposOcorrencia(oc, membros) {
+    return `<div class="row">
+        <label class="field"><span>Gravidade</span>
+          <select id="fGrav">${GRAVIDADES.map(g => `<option value="${g}" ${oc && (oc.gravidade || '').toLowerCase() === g ? 'selected' : ''}>${g[0].toUpperCase() + g.slice(1)}</option>`).join('')}</select></label>
+        <label class="field"><span>Prazo para correção</span><input type="date" id="fPrazo" value="${oc ? (oc.prazoCorrecao || '') : ''}"></label>
+      </div>
+      <label class="field"><span>Descrição da não conformidade</span>
+        <textarea id="fDesc" placeholder="O que foi observado, onde, e por quê é uma não conformidade">${oc ? esc(oc.descricao || '') : ''}</textarea></label>
+      <label class="field"><span>Ação corretiva (o que deve ser feito)</span>
+        <textarea id="fAcao" placeholder="Ex.: substituir a borracha de vedação e revisar a dobradiça">${oc ? esc(oc.acaoCorretiva || '') : ''}</textarea></label>
+      <label class="field"><span>Atribuir a (responsável pela correção)</span>
+        <select id="fAtrib"><option value="">— escolha um membro do contrato —</option>
+          ${membros.map(m => `<option value="${esc(m.email)}" ${oc && (oc.atribuidoA || '').toLowerCase() === m.email.toLowerCase() ? 'selected' : ''}>${esc(m.name || m.email)} · ${esc((PAPEIS[m.papel] || {}).label || m.papel)}</option>`).join('')}</select></label>
+      <label class="field"><span>Fotos (até 3)${oc && oc.fotos && oc.fotos.length ? ' — enviar novas substitui as atuais' : ''}</span><input type="file" id="fFotos" accept="image/*" multiple></label>
+      <div class="fotos" id="fPrev">${oc && oc.fotos ? oc.fotos.map(f => `<img src="${esc(f.dataUrl)}" alt="">`).join('') : ''}</div>`;
+  }
+  function _wireFotos(fotos) {
+    $('#fFotos').onchange = async (e) => {
+      toast('Processando foto…');
+      for (const file of [...e.target.files]) { if (fotos.length >= 3) break; fotos.push(await capturarFoto(file)); }
+      $('#fPrev').innerHTML = fotos.map(f => `<img src="${f.dataUrl}" alt="">`).join('');
+      if (fotos.some(f => f.lat == null)) toast('Foto salva sem localização — verifique a permissão de local.', true);
+      e.target.value = '';
+    };
+  }
+  function _coletarOcorrencia(cid, oc, fotos) {
+    const desc = $('#fDesc').value.trim();
+    if (!desc) { toast('Descreva a não conformidade.', true); return null; }
+    const p = { contratoId: cid, gravidade: $('#fGrav').value, prazoCorrecao: $('#fPrazo').value || null,
+      descricao: desc, acaoCorretiva: $('#fAcao').value.trim() || null, atribuidoA: $('#fAtrib').value || null };
+    if (oc) { p.id = oc.id; if (fotos.length) p.fotos = fotos; } else p.fotos = fotos;
+    return p;
   }
 
   async function ocCriar() {
     const cid = getContratoAtual(); const body = $('#ocBody');
     if (!cid) return body.innerHTML = `<div class="empty"><strong>Escolha um contrato</strong>Selecione o contrato onde observou a ocorrência.</div>`;
     const membros = (await getMembros(cid)).filter(m => m.email.toLowerCase() !== getCurrentUser().email.toLowerCase());
-    body.innerHTML = `<div class="card">
-      <div class="row">
-        <label class="field"><span>Gravidade</span>
-          <select id="fGrav">${GRAVIDADES.map(g => `<option value="${g}">${g[0].toUpperCase() + g.slice(1)}</option>`).join('')}</select></label>
-        <label class="field"><span>Prazo para correção</span><input type="date" id="fPrazo"></label>
-      </div>
-      <label class="field"><span>Descrição da não conformidade</span>
-        <textarea id="fDesc" placeholder="O que foi observado, onde, e por quê é uma não conformidade"></textarea></label>
-      <label class="field"><span>Atribuir a (responsável pela correção)</span>
-        <select id="fAtrib">
-          <option value="">— escolha um membro do contrato —</option>
-          ${membros.map(m => `<option value="${esc(m.email)}">${esc(m.name || m.email)} · ${esc((PAPEIS[m.papel]||{}).label || m.papel)}</option>`).join('')}
-        </select></label>
-      <label class="field"><span>Fotos (até 3)</span><input type="file" id="fFotos" accept="image/*" multiple></label>
-      <div class="fotos" id="fPrev"></div>
-      <div style="margin-top:8px"><button class="btn primary" id="fSalvar">Registrar ocorrência</button></div>
-    </div>`;
-    pedirLocalizacao(); // pede permissão/posição cedo
-    let fotos = [];
-    $('#fFotos').onchange = async (e) => {
-      toast('Processando foto…');
-      for (const file of [...e.target.files]) { if (fotos.length >= 3) break; fotos.push(await capturarFoto(file)); }
-      $('#fPrev').innerHTML = fotos.map(f => `<img src="${f.dataUrl}" alt="">`).join('');
-      if (fotos.some(f => f.lat == null)) toast('Foto salva sem localização — verifique a permissão de local do navegador.', true);
-      e.target.value = '';
-    };
+    body.innerHTML = `<div class="card">${_camposOcorrencia(null, membros)}
+      <div style="margin-top:8px"><button class="btn primary" id="fSalvar">Registrar ocorrência</button></div></div>`;
+    pedirLocalizacao();
+    let fotos = []; _wireFotos(fotos);
     $('#fSalvar').onclick = async () => {
-      const desc = $('#fDesc').value.trim();
-      if (!desc) return toast('Descreva a não conformidade.', true);
+      const p = _coletarOcorrencia(cid, null, fotos); if (!p) return;
       $('#fSalvar').disabled = true;
-      try {
-        await DB.criarOcorrencia({
-          contratoId: cid, gravidade: $('#fGrav').value,
-          prazoCorrecao: $('#fPrazo').value || null, descricao: desc,
-          atribuidoA: $('#fAtrib').value || null, fotos,
-        });
-        toast('Ocorrência registrada.');
-        ocSub = 'contrato'; renderOcorrencias();
-      } catch (e) { toast(e.message, true); $('#fSalvar').disabled = false; }
+      try { await DB.criarOcorrencia(p); toast('Ocorrência registrada.'); ocSub = 'contrato'; renderOcorrencias(); }
+      catch (e) { toast(e.message, true); $('#fSalvar').disabled = false; }
+    };
+  }
+
+  async function abrirEditarOcorrencia(oc) {
+    if (!oc) return;
+    const membros = await getMembros(oc.contratoId);
+    openModal(`<div class="eyebrow">Editar</div><h2>Ocorrência</h2>${_camposOcorrencia(oc, membros)}
+      <div class="actions"><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="fSalvar">Salvar</button></div>`);
+    pedirLocalizacao();
+    let fotos = []; _wireFotos(fotos);
+    $('#fSalvar').onclick = async () => {
+      const p = _coletarOcorrencia(oc.contratoId, oc, fotos); if (!p) return;
+      $('#fSalvar').disabled = true;
+      try { await DB.criarOcorrencia(p); closeModal(); toast('Ocorrência atualizada.'); ocSub = 'contrato'; renderOcorrencias(); }
+      catch (e) { toast(e.message, true); $('#fSalvar').disabled = false; }
     };
   }
 

@@ -5,8 +5,10 @@
   async function renderPac() {
     const cid = getContratoAtual();
     view.innerHTML = `<div class="view-head"><div><div class="eyebrow">Autocontrole</div><h1>P.A.C.</h1>
-      <p class="muted" style="font-size:.86rem;margin:.3rem 0 0">Planilhas aplicáveis a este contrato pelos regimes de inspeção. Lançamentos vão para aprovação do gestor.</p></div></div>
+      <p class="muted" style="font-size:.86rem;margin:.3rem 0 0">Planilhas aplicáveis a este contrato pelos regimes de inspeção. Lançamentos vão para aprovação do gestor.</p></div>
+      <button class="btn sm" id="pacPdf">Gerar PDF</button></div>
       <div id="pacBody" class="muted">Carregando…</div>`;
+    const _pdfBtn = $('#pacPdf'); if (_pdfBtn) _pdfBtn.onclick = () => abrirRelatorioPacModal();
     if (!cid) return $('#pacBody').innerHTML = `<div class="empty"><strong>Escolha um contrato</strong>Selecione um contrato acima para ver as planilhas.</div>`;
     let data;
     try { data = await DB.getPlanilhasDoContrato(cid); } catch (e) { return $('#pacBody').innerHTML = `<div class="empty">${esc(e.message)}</div>`; }

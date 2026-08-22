@@ -19,9 +19,16 @@
   async function renderDashboard() {
     const u = getCurrentUser() || {};
     const p = isMaster() ? 'Master' : (papelAtual() ? papelAtual().charAt(0).toUpperCase() + papelAtual().slice(1) : (u.role === 'admin' ? 'Administrador' : 'Usuário'));
+    const cAtual = (typeof contratos !== 'undefined' ? contratos : []).find(c => c.id === getContratoAtual());
+    const ctxCard = cAtual ? `<div class="card ctxcard">
+      ${cAtual.estabelecimentoFoto ? `<img src="${cAtual.estabelecimentoFoto}" class="ctxfoto" alt="">` : `<div class="ctxfoto ctxph">${_ICONE.building}</div>`}
+      <div style="min-width:0"><div class="ctxnum">${esc(cAtual.numero || '')}</div>
+        <div class="muted" style="font-size:.84rem">${esc(cAtual.estabelecimentoNome || 'Sem estabelecimento')}${cAtual.objeto ? ' · ' + esc(cAtual.objeto) : ''}</div></div>
+    </div>` : '';
     view.innerHTML = `
       <div class="hubhead"><div><div class="oi">Olá,</div><div class="nome">${esc(u.name || '')}</div>
         <span class="hubrole">${esc(p)}</span></div></div>
+      ${ctxCard}
       <div class="grid cols-3" id="hubKpi">
         <div class="kpi"><div class="n">—</div><div class="lbl">Ocorrências abertas</div></div>
         <div class="kpi"><div class="n">—</div><div class="lbl">Registros do P.A.C. (mês)</div></div>
@@ -43,7 +50,7 @@
     const temContrato = !!getContratoAtual();
     const mods = [
       { tab: 'ocorrencias', icon: 'bell', nome: 'Ocorrências', desc: 'Não conformidades', pill: (d.ocorrenciasAbertas > 0) ? ['aberta', `${d.ocorrenciasAbertas} abertas`] : ['ok', 'em dia'], show: true },
-      { tab: 'pac', icon: 'clipboard', nome: 'P.A.C.', desc: 'Planilhas de autocontrole', pill: ['ok', `${d.pacMes ?? 0} este mês`], show: temContrato },
+      { tab: 'pac', icon: 'clipboard', nome: 'P.A.C.', desc: 'Planilhas de autocontrole', pill: (d.pacAtrasadas > 0) ? ['atraso', `${d.pacAtrasadas} atrasada${d.pacAtrasadas === 1 ? '' : 's'}`] : ['ok', `${d.pacMes ?? 0} este mês`], show: temContrato },
       { tab: 'temperatura', icon: 'thermometer', nome: 'Temperatura', desc: 'Sensores e câmaras', pill: (d.tempFora > 0) ? ['atraso', `${d.sensores ?? 0} sensores · ${d.tempFora} alerta`] : ['neutral', `${d.sensores ?? 0} sensores`], show: temContrato },
       { tab: 'cadastro', icon: 'building', nome: 'Cadastro', desc: 'Contratos e equipamentos', pill: ['neutral', `${d.contratos ?? 0} contratos`], show: isAdministradorAnywhere() },
       { tab: 'empresa', icon: 'badge', nome: 'Minha empresa', desc: 'Perfil e logo', pill: ['neutral', 'branding'], show: isMaster() || u.role === 'admin' },

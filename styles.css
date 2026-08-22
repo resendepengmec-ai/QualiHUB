@@ -262,3 +262,9 @@ textarea { min-height: 84px; resize: vertical; }
 /* Acordeão da atividade recente */
 .hubacc { display: flex; align-items: center; justify-content: space-between; width: 100%; background: none; border: 0; padding: 6px 0; margin: 24px 0 8px; cursor: pointer; color: var(--muted); font: inherit; }
 .accchev { color: var(--muted); font-size: .8rem; }
+
+/* Card do contrato selecionado (hub) */
+.ctxcard { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.ctxfoto { width: 56px; height: 56px; border-radius: 10px; object-fit: cover; flex: none; }
+.ctxph { display: flex; align-items: center; justify-content: center; background: var(--primary-wash); color: var(--primary-ink); }
+.ctxnum { font-weight: 800; font-size: 1.05rem; letter-spacing: -.01em; }

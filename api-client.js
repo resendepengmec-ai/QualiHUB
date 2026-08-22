@@ -167,6 +167,7 @@ const DB = {
   getStats:           (cid)   => API.get('/stats' + (cid ? `?contrato=${cid}` : '')),
   getHomeResumo:      ()      => API.get('/home/resumo'),
   getRelatorioOcorrencias: (q) => API.get('/relatorios/ocorrencias' + (q ? `?${q}` : '')),
+  getRelatorioPac:         (q) => API.get('/relatorios/pac' + (q ? `?${q}` : '')),
 
   // Perfil da empresa (cabeçalho dos PDFs)
   getPerfil:          ()      => API.get('/perfil'),
@@ -257,30 +258,62 @@ function _getPos() {
 // a localização já esteja pronta quando a foto for capturada — importante no
 // celular, onde o GPS pode demorar a fixar.
 function pedirLocalizacao() { return _getPos(); }
-function _stampImage(dataUrl, capturedAt, pos) {
-  return new Promise(resolve => {
-    const img = new Image();
-    img.onload = () => {
-      const maxW = 1600, scale = Math.min(1, maxW / img.width);
-      const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
-      const c = document.createElement('canvas'); c.width = w; c.height = h;
-      const ctx = c.getContext('2d');
-      ctx.drawImage(img, 0, 0, w, h);
-      const dt  = new Date(capturedAt).toLocaleString('pt-BR');
-      const loc = pos ? `${pos.lat.toFixed(5)}, ${pos.lng.toFixed(5)}${pos.acc ? '  ±' + Math.round(pos.acc) + 'm' : ''}`
-                      : 'Localização indisponível';
-      const lines = [dt, loc];
-      const fs = Math.max(12, Math.round(w * 0.028)), pad = Math.round(w * 0.02);
-      ctx.font = `600 ${fs}px -apple-system, "Segoe UI", Roboto, sans-serif`;
-      const lh = fs * 1.28, barH = pad * 2 + lines.length * lh;
-      ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, h - barH, w, barH);
-      ctx.fillStyle = '#fff'; ctx.textBaseline = 'top';
-      lines.forEach((ln, i) => ctx.fillText(ln, pad, h - barH + pad + i * lh));
-      resolve(c.toDataURL('image/jpeg', 0.85));
-    };
-    img.onerror = () => resolve(dataUrl);
-    img.src = dataUrl;
-  });
+// Carrega imagem permitindo uso em canvas (CORS) — para os tiles do OSM.
+function _loadImg(src, cors) {
+  return new Promise((res, rej) => { const i = new Image(); if (cors) i.crossOrigin = 'anonymous'; i.onload = () => res(i); i.onerror = () => rej(new Error('img')); i.src = src; });
+}
+// Miniatura de mapa (OpenStreetMap) centralizada no ponto, com marcador.
+// Usa tiles (que enviam CORS) para não "sujar" o canvas da foto.
+async function _miniMapa(lat, lng, w, h, z) {
+  z = z || 16; const R = 256, n = 2 ** z;
+  const wx = (lng + 180) / 360 * n * R;
+  const lr = lat * Math.PI / 180;
+  const wy = (1 - Math.log(Math.tan(lr) + 1 / Math.cos(lr)) / Math.PI) / 2 * n * R;
+  const left = wx - w / 2, top = wy - h / 2;
+  const txMin = Math.floor(left / R), txMax = Math.floor((left + w) / R);
+  const tyMin = Math.floor(top / R), tyMax = Math.floor((top + h) / R);
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#dfe6e2'; ctx.fillRect(0, 0, w, h);
+  const jobs = [];
+  for (let tx = txMin; tx <= txMax; tx++) for (let ty = tyMin; ty <= tyMax; ty++) {
+    if (ty < 0 || ty >= n) continue;
+    const X = ((tx % n) + n) % n;
+    jobs.push(_loadImg(`https://tile.openstreetmap.org/${z}/${X}/${ty}.png`, true)
+      .then(img => ctx.drawImage(img, tx * R - left, ty * R - top)).catch(() => {}));
+  }
+  await Promise.all(jobs);
+  ctx.fillStyle = '#c0392b'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(w / 2, h / 2, 5, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 1; ctx.strokeRect(0.5, 0.5, w - 1, h - 1);
+  try { c.toDataURL(); return c; } catch (e) { return null; } // se algum tile sujar o canvas, desiste do mapa
+}
+async function _stampImage(dataUrl, capturedAt, pos) {
+  let img;
+  try { img = await _loadImg(dataUrl, false); } catch (e) { return dataUrl; }
+  const maxW = 1600, scale = Math.min(1, maxW / img.width);
+  const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  ctx.drawImage(img, 0, 0, w, h);
+  const dt  = new Date(capturedAt).toLocaleString('pt-BR');
+  const loc = pos ? `${pos.lat.toFixed(5)}, ${pos.lng.toFixed(5)}${pos.acc ? '  ±' + Math.round(pos.acc) + 'm' : ''}` : 'Localização indisponível';
+  const lines = [dt, loc];
+  const fs = Math.max(12, Math.round(w * 0.028)), pad = Math.round(w * 0.02);
+  ctx.font = `600 ${fs}px -apple-system, "Segoe UI", Roboto, sans-serif`;
+  const lh = fs * 1.28, barH = pad * 2 + lines.length * lh;
+  ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, h - barH, w, barH);
+  ctx.fillStyle = '#fff'; ctx.textBaseline = 'top';
+  lines.forEach((ln, i) => ctx.fillText(ln, pad, h - barH + pad + i * lh));
+  // miniatura do mapa (canto inferior direito, acima da tarja)
+  if (pos) {
+    try {
+      const mmW = Math.round(Math.min(180, w * 0.3)), mmH = Math.round(mmW * 0.66);
+      const mm = await _miniMapa(pos.lat, pos.lng, mmW, mmH);
+      if (mm) ctx.drawImage(mm, w - mmW - pad, h - barH - mmH - Math.round(pad / 2));
+    } catch (e) { /* sem mapa: mantém a tarja de texto */ }
+  }
+  try { return c.toDataURL('image/jpeg', 0.85); } catch (e) { return dataUrl; }
 }
 async function capturarFoto(file) {
   const pos = await _getPos();
