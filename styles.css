@@ -268,3 +268,8 @@ textarea { min-height: 84px; resize: vertical; }
 .ctxfoto { width: 56px; height: 56px; border-radius: 10px; object-fit: cover; flex: none; }
 .ctxph { display: flex; align-items: center; justify-content: center; background: var(--primary-wash); color: var(--primary-ink); }
 .ctxnum { font-weight: 800; font-size: 1.05rem; letter-spacing: -.01em; }
+
+/* Miniatura de foto com botão de excluir (edição de ocorrência) */
+.fotowrap { position: relative; display: inline-block; }
+.fotorm { position: absolute; top: 3px; right: 3px; width: 22px; height: 22px; border-radius: 50%; border: 0; background: rgba(0,0,0,.62); color: #fff; font-size: 15px; line-height: 20px; text-align: center; cursor: pointer; padding: 0; }
+.fotorm:hover { background: var(--danger); }

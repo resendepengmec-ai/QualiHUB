@@ -22,8 +22,12 @@
     const cAtual = (typeof contratos !== 'undefined' ? contratos : []).find(c => c.id === getContratoAtual());
     const ctxCard = cAtual ? `<div class="card ctxcard">
       ${cAtual.estabelecimentoFoto ? `<img src="${cAtual.estabelecimentoFoto}" class="ctxfoto" alt="">` : `<div class="ctxfoto ctxph">${_ICONE.building}</div>`}
-      <div style="min-width:0"><div class="ctxnum">${esc(cAtual.numero || '')}</div>
-        <div class="muted" style="font-size:.84rem">${esc(cAtual.estabelecimentoNome || 'Sem estabelecimento')}${cAtual.objeto ? ' · ' + esc(cAtual.objeto) : ''}</div></div>
+      <div style="min-width:0">
+        <div class="eyebrow" style="margin:0 0 1px">Contrato selecionado</div>
+        <div class="ctxnum">${esc(cAtual.numero || '')}</div>
+        <div class="muted" style="font-size:.84rem">${esc(cAtual.estabelecimentoNome || 'Sem estabelecimento vinculado')}</div>
+        ${cAtual.objeto ? `<div class="muted" style="font-size:.84rem">${esc(cAtual.objeto)}</div>` : ''}
+      </div>
     </div>` : '';
     view.innerHTML = `
       <div class="hubhead"><div><div class="oi">Olá,</div><div class="nome">${esc(u.name || '')}</div>

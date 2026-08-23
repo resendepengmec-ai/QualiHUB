@@ -99,8 +99,8 @@
       <label class="field"><span>Atribuir a (responsável pela correção)</span>
         <select id="fAtrib"><option value="">— escolha um membro do contrato —</option>
           ${membros.map(m => `<option value="${esc(m.email)}" ${oc && (oc.atribuidoA || '').toLowerCase() === m.email.toLowerCase() ? 'selected' : ''}>${esc(m.name || m.email)} · ${esc((PAPEIS[m.papel] || {}).label || m.papel)}</option>`).join('')}</select></label>
-      <label class="field"><span>Fotos (até 3)${oc && oc.fotos && oc.fotos.length ? ' — enviar novas substitui as atuais' : ''}</span><input type="file" id="fFotos" accept="image/*" multiple></label>
-      <div class="fotos" id="fPrev">${oc && oc.fotos ? oc.fotos.map(f => `<img src="${esc(f.dataUrl)}" alt="">`).join('') : ''}</div>`;
+      <label class="field"><span>Fotos (até 3)</span><input type="file" id="fFotos" accept="image/*" multiple></label>
+      <div class="fotos" id="fPrev"></div>`;
   }
   function _wireFotos(fotos) {
     $('#fFotos').onchange = async (e) => {
@@ -111,12 +111,12 @@
       e.target.value = '';
     };
   }
-  function _coletarOcorrencia(cid, oc, fotos) {
+  function _coletarOcorrencia(cid, oc, fotos, sempreFotos) {
     const desc = $('#fDesc').value.trim();
     if (!desc) { toast('Descreva a não conformidade.', true); return null; }
     const p = { contratoId: cid, gravidade: $('#fGrav').value, prazoCorrecao: $('#fPrazo').value || null,
       descricao: desc, acaoCorretiva: $('#fAcao').value.trim() || null, atribuidoA: $('#fAtrib').value || null };
-    if (oc) { p.id = oc.id; if (fotos.length) p.fotos = fotos; } else p.fotos = fotos;
+    if (oc) { p.id = oc.id; if (sempreFotos || fotos.length) p.fotos = fotos; } else p.fotos = fotos;
     return p;
   }
 
@@ -139,12 +139,31 @@
   async function abrirEditarOcorrencia(oc) {
     if (!oc) return;
     const membros = await getMembros(oc.contratoId);
+    let manter = (oc.fotos || []).slice();
+    let novas = [];
     openModal(`<div class="eyebrow">Editar</div><h2>Ocorrência</h2>${_camposOcorrencia(oc, membros)}
       <div class="actions"><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="fSalvar">Salvar</button></div>`);
     pedirLocalizacao();
-    let fotos = []; _wireFotos(fotos);
+    const render = () => {
+      const all = manter.concat(novas);
+      $('#fPrev').innerHTML = all.map((f, i) => `<div class="fotowrap"><img src="${esc(f.dataUrl)}" alt=""><button type="button" class="fotorm" data-i="${i}" aria-label="Excluir foto">×</button></div>`).join('');
+      $('#fPrev').querySelectorAll('.fotorm').forEach(b => b.onclick = () => {
+        const i = +b.dataset.i;
+        if (i < manter.length) { manter.splice(i, 1); toast('Foto excluída.'); }
+        else { novas.splice(i - manter.length, 1); toast('Foto removida.'); }
+        render();
+      });
+    };
+    render();
+    $('#fFotos').onchange = async (e) => {
+      for (const file of [...e.target.files]) {
+        if (manter.length + novas.length >= 3) { toast('Máximo de 3 fotos.', true); break; }
+        toast('Processando foto…'); novas.push(await capturarFoto(file)); toast('Foto adicionada.');
+      }
+      render(); e.target.value = '';
+    };
     $('#fSalvar').onclick = async () => {
-      const p = _coletarOcorrencia(oc.contratoId, oc, fotos); if (!p) return;
+      const p = _coletarOcorrencia(oc.contratoId, oc, manter.concat(novas), true); if (!p) return;
       $('#fSalvar').disabled = true;
       try { await DB.criarOcorrencia(p); closeModal(); toast('Ocorrência atualizada.'); ocSub = 'contrato'; renderOcorrencias(); }
       catch (e) { toast(e.message, true); $('#fSalvar').disabled = false; }

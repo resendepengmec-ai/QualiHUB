@@ -288,6 +288,24 @@ async function _miniMapa(lat, lng, w, h, z) {
   ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 1; ctx.strokeRect(0.5, 0.5, w - 1, h - 1);
   try { c.toDataURL(); return c; } catch (e) { return null; } // se algum tile sujar o canvas, desiste do mapa
 }
+// Endereço aproximado (reverso via Nominatim/OSM), best-effort e com timeout.
+async function _endereco(lat, lng) {
+  try {
+    const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 2500);
+    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`, { signal: ctrl.signal, headers: { Accept: 'application/json' } });
+    clearTimeout(t); const j = await r.json(); const a = j.address || {};
+    const rua = a.road || a.pedestrian || a.footway || j.name || '';
+    const num = a.house_number ? ', ' + a.house_number : '';
+    const bairro = a.suburb || a.neighbourhood || a.city_district || '';
+    const cidade = a.city || a.town || a.village || a.municipality || '';
+    return [rua + num, bairro, cidade].filter(Boolean).join(' · ') || null;
+  } catch (e) { return null; }
+}
+function _ellipsize(ctx, txt, maxW) {
+  if (ctx.measureText(txt).width <= maxW) return txt;
+  let s = txt; while (s.length > 1 && ctx.measureText(s + '…').width > maxW) s = s.slice(0, -1);
+  return s + '…';
+}
 async function _stampImage(dataUrl, capturedAt, pos) {
   let img;
   try { img = await _loadImg(dataUrl, false); } catch (e) { return dataUrl; }
@@ -296,23 +314,49 @@ async function _stampImage(dataUrl, capturedAt, pos) {
   const c = document.createElement('canvas'); c.width = w; c.height = h;
   const ctx = c.getContext('2d');
   ctx.drawImage(img, 0, 0, w, h);
-  const dt  = new Date(capturedAt).toLocaleString('pt-BR');
-  const loc = pos ? `${pos.lat.toFixed(5)}, ${pos.lng.toFixed(5)}${pos.acc ? '  ±' + Math.round(pos.acc) + 'm' : ''}` : 'Localização indisponível';
-  const lines = [dt, loc];
-  const fs = Math.max(12, Math.round(w * 0.028)), pad = Math.round(w * 0.02);
-  ctx.font = `600 ${fs}px -apple-system, "Segoe UI", Roboto, sans-serif`;
-  const lh = fs * 1.28, barH = pad * 2 + lines.length * lh;
-  ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, h - barH, w, barH);
-  ctx.fillStyle = '#fff'; ctx.textBaseline = 'top';
-  lines.forEach((ln, i) => ctx.fillText(ln, pad, h - barH + pad + i * lh));
-  // miniatura do mapa (canto inferior direito, acima da tarja)
+
+  const dt = new Date(capturedAt).toLocaleString('pt-BR');
+  const fs = Math.max(12, Math.round(w * 0.026)), pad = Math.round(w * 0.02), lh = Math.round(fs * 1.32);
+
+  let endereco = null;
+  if (pos) endereco = await _endereco(pos.lat, pos.lng).catch(() => null);
+  // linhas de texto (endereço, coordenadas, data/hora)
+  const lines = [];
+  if (pos) {
+    if (endereco) lines.push({ t: endereco, bold: true });
+    lines.push({ t: `Lat ${pos.lat.toFixed(5)}  Long ${pos.lng.toFixed(5)}${pos.acc ? '  ±' + Math.round(pos.acc) + 'm' : ''}` });
+    lines.push({ t: dt });
+  } else {
+    lines.push({ t: 'Localização indisponível', bold: true });
+    lines.push({ t: dt });
+  }
+  const textH = lines.length * lh;
+  const mapS = pos ? Math.max(56, Math.min(Math.round(w * 0.17), textH)) : 0;
+  const barH = Math.max(mapS, textH) + pad * 1.4;
+  const barTop = h - barH;
+
+  ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, barTop, w, barH);
+
+  // mapa (canto inferior esquerdo)
+  let textX = pad;
   if (pos) {
     try {
-      const mmW = Math.round(Math.min(180, w * 0.3)), mmH = Math.round(mmW * 0.66);
-      const mm = await _miniMapa(pos.lat, pos.lng, mmW, mmH);
-      if (mm) ctx.drawImage(mm, w - mmW - pad, h - barH - mmH - Math.round(pad / 2));
-    } catch (e) { /* sem mapa: mantém a tarja de texto */ }
+      const map = await _miniMapa(pos.lat, pos.lng, mapS, mapS, 16);
+      const my = barTop + (barH - mapS) / 2;
+      if (map) { ctx.drawImage(map, pad, my); textX = pad + mapS + pad; }
+    } catch (e) { /* sem mapa: só texto */ }
   }
+
+  // texto ao lado do mapa
+  ctx.textBaseline = 'top'; ctx.fillStyle = '#fff';
+  const maxTextW = w - textX - pad;
+  let ty = barTop + (barH - textH) / 2;
+  lines.forEach(ln => {
+    ctx.font = `${ln.bold ? 700 : 500} ${fs}px -apple-system, "Segoe UI", Roboto, sans-serif`;
+    ctx.fillText(_ellipsize(ctx, ln.t, maxTextW), textX, ty);
+    ty += lh;
+  });
+
   try { return c.toDataURL('image/jpeg', 0.85); } catch (e) { return dataUrl; }
 }
 async function capturarFoto(file) {
