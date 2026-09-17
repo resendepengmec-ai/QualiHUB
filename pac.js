@@ -152,8 +152,9 @@
     const cid = getContratoAtual();
     view.innerHTML = `<div class="view-head"><div><div class="eyebrow">Monitoramento</div><h1>Temperatura</h1>
       <p class="muted" style="font-size:.86rem;margin:.3rem 0 0">Câmaras, balcões e sensores com conformidade automática (manual e IoT).</p></div>
-      <button class="btn primary" id="tNovo">Novo registro</button></div>
+      <div style="display:flex;gap:8px"><button class="btn sm" id="tPdf">Gerar PDF</button><button class="btn primary" id="tNovo">Novo registro</button></div></div>
       <div id="tempBody" class="muted">Carregando…</div>`;
+    $('#tPdf').onclick = () => abrirRelatorioTemperaturaModal();
     if (!cid) return $('#tempBody').innerHTML = `<div class="empty"><strong>Escolha um contrato</strong>Selecione um contrato acima para ver a temperatura.</div>`;
     $('#tNovo').onclick = () => abrirTemperatura(cid);
     let eqs = [], regs = [];

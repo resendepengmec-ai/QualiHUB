@@ -82,7 +82,7 @@
       ${contratos.length ? contratos.map(c => `<div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
           <div><strong>${esc(c.numero)}</strong> ${(c.regimes || []).map(k => `<span class="chip sim">${(REGIME_LABEL[k] || {}).curto || k}</span>`).join(' ')} ${c.classificacao ? `<span class="chip neutral">${esc(CLASSIFICACAO_LABEL[c.classificacao] || c.classificacao)}</span>` : ''}
-            <div class="muted" style="font-size:.82rem">${esc(c.objeto || '')}${c.estabelecimentoNome ? ' · ' + esc(c.estabelecimentoNome) : ''}${c.rt && c.rt.nome ? ' · RT ' + esc(c.rt.nome) : ''}${c.vigenciaInicio ? ' · vigência ' + fmtDate(c.vigenciaInicio) + '–' + fmtDate(c.vigenciaFim) : ''}</div></div>
+            <div class="muted" style="font-size:.82rem">${esc(c.objeto || '')}${c.estabelecimentoNome ? ' · ' + esc(c.estabelecimentoNome) : ''}${c.rt && c.rt.nome ? ' · RT ' + esc(c.rt.nome) : ''}${c.vigenciaInicio ? ' · vigência ' + fmtDate(c.vigenciaInicio) + '–' + fmtDate(c.vigenciaFim) : ''}${c.periodicidadeVisita ? ' · visita ' + esc(labelPeriodicidade(c.periodicidadeVisita)) : ''}</div></div>
           <div style="display:flex;gap:8px;align-items:center;flex:none">
             ${podeEditar(c) ? `<button class="btn sm" data-edit="${c.id}">Editar</button>` : ''}
           </div></div></div>`).join('')
@@ -118,8 +118,18 @@
           ${REGIMES.map(rg => `<label style="display:flex;gap:8px;align-items:center;font-weight:400;margin:0"><input type="checkbox" class="cReg" value="${rg.key}" style="width:auto" ${ed && (c.regimes || []).includes(rg.key) ? 'checked' : ''}>${rg.label}</label>`).join('')}
         </div>
         <span class="muted" style="font-size:.75rem;display:block;margin-top:6px">O conjunto de planilhas do P.A.C. é definido por esses regimes.</span></div>
+      <div class="row">
+        <label class="field"><span>Periodicidade da visita técnica</span>
+          <select id="cPeriodTipo"><option value="">— não definida —</option>
+            ${PERIODICIDADES_VISITA.map(p => `<option value="${p.key}" ${ed && c.periodicidadeVisita?.tipo === p.key ? 'selected' : ''}>${p.label}</option>`).join('')}
+          </select></label>
+        <label class="field" id="cPeriodVezesWrap" style="display:${ed && c.periodicidadeVisita?.tipo === 'personalizada' ? 'block' : 'none'}">
+          <span>Vezes por semana</span><input id="cPeriodVezes" type="number" step="1" min="1" value="${ed && c.periodicidadeVisita?.vezesPorSemana ? c.periodicidadeVisita.vezesPorSemana : ''}"></label>
+      </div>
+      <span class="muted" style="font-size:.75rem;display:block;margin-top:-6px">Alimenta o alerta de agenda no módulo Visitas.</span>
       <div class="actions"><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="cOk">Salvar</button></div>`);
     $('#cEst').onchange = () => { $('#cEstNovoWrap').style.display = $('#cEst').value === '__novo__' ? 'block' : 'none'; };
+    $('#cPeriodTipo').onchange = () => { $('#cPeriodVezesWrap').style.display = $('#cPeriodTipo').value === 'personalizada' ? 'block' : 'none'; };
     $('#cOk').onclick = async () => {
       const numero = $('#cNum').value.trim(); if (!numero) return toast('Informe o número.', true);
       try {
@@ -130,11 +140,14 @@
           const r = await DB.saveEstabelecimento({ nome, cnpj: $('#cEstCnpj').value.trim() });
           estId = r.saved;
         }
+        const periodTipo = $('#cPeriodTipo').value;
+        if (periodTipo === 'personalizada' && !$('#cPeriodVezes').value) return toast('Informe quantas vezes por semana.', true);
         const payload = { numero, estabelecimentoId: estId || null, objeto: $('#cObj').value.trim(),
           vigenciaInicio: $('#cIni').value || null, vigenciaFim: $('#cFim').value || null,
           classificacao: $('#cClass').value || null,
           rt: { nome: $('#cRtNome').value.trim(), conselho: $('#cRtConselho').value.trim() },
-          regimes: [...document.querySelectorAll('.cReg:checked')].map(x => x.value) };
+          regimes: [...document.querySelectorAll('.cReg:checked')].map(x => x.value),
+          periodicidadeVisita: periodTipo ? { tipo: periodTipo, vezesPorSemana: periodTipo === 'personalizada' ? Number($('#cPeriodVezes').value) : undefined } : null };
         if (ed) payload.id = c.id;
         await DB.saveContrato(payload);
         closeModal(); toast('Contrato salvo.'); await refreshMe(); await carregarContratos(); cadContratos();

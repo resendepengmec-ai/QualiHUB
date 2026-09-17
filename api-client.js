@@ -187,6 +187,19 @@ const DB = {
   regenerarTokenEquip:    (id)      => API.post(`/equipamentos/${id}/regenerar-token`, {}),
   criarTemperatura:       (contratoId, leituras) => API.post('/pac/temperatura', { contratoId, leituras }),
 
+  // Documentos sanitários
+  getDocumentos:          (cid)     => API.get(`/contratos/${cid}/documentos`),
+  getDocumentosChecklist: (cid)     => API.get(`/contratos/${cid}/documentos-checklist`),
+  saveDocumento:          (cid, d)  => API.post(`/contratos/${cid}/documentos`, { documento: d }),
+  removeDocumento:        (id)      => API.delete(`/documentos/${id}`),
+  lerDocumentoIA:         (cid, arquivo, mimeType) => API.post(`/contratos/${cid}/documentos/ler-ia`, { arquivo, mimeType }),
+  getRelatorioDocumentos: (q)       => API.get('/relatorios/documentos' + (q ? `?${q}` : '')),
+
+  // Agenda de visitas
+  getVisitas:             (cid)     => API.get(`/contratos/${cid}/visitas`),
+  registrarVisita:        (cid, v)  => API.post(`/contratos/${cid}/visitas`, { visita: v }),
+  removerVisita:          (id)      => API.delete(`/visitas/${id}`),
+
   // Plataforma (SaaS) — administradores de cliente (só master)
   getPlatformAdmins:  ()      => API.get('/platform/admins'),
   getPlatformTree:    ()      => API.get('/platform/tree'),
@@ -235,6 +248,33 @@ const CLASSIFICACOES = [
   { key: 'outro', label: 'Outro' },
 ];
 const CLASSIFICACAO_LABEL = Object.fromEntries(CLASSIFICACOES.map(c => [c.key, c.label]));
+// Documentos sanitários (mesmo catálogo do backend — api.js TIPOS_DOCUMENTO).
+// `periodicidadeMeses`: certificados que renovam por rotina (limpeza de caixa
+// d'água, dedetização) — o backend usa emissão+periodicidade como vencimento
+// implícito quando o documento não tem validade escrita.
+const TIPOS_DOCUMENTO = [
+  { key: 'alvara_sanitario', label: 'Alvará Sanitário / Licença de funcionamento (Prefeitura)', periodicidadeMeses: null },
+  { key: 'avcb', label: 'AVCB / Licença do Corpo de Bombeiros', periodicidadeMeses: null },
+  { key: 'licenca_ambiental', label: 'Licença Ambiental', periodicidadeMeses: null },
+  { key: 'registro_sif_sie', label: 'Registro SIF / SIE / SIM', periodicidadeMeses: null },
+  { key: 'licenca_agua', label: 'Outorga / Licença de uso de água', periodicidadeMeses: null },
+  { key: 'limpeza_caixa_dagua', label: "Limpeza do reservatório de água (caixa d'água)", periodicidadeMeses: 6 },
+  { key: 'controle_pragas', label: 'Controle de pragas (dedetização)', periodicidadeMeses: 3 },
+  { key: 'outro', label: 'Outro', periodicidadeMeses: null },
+];
+const STATUS_DOC_LABEL = { ok: 'Em dia', vencendo: 'Vencendo', vencida: 'Vencido', sem_validade: 'Sem validade', faltando: 'Faltando' };
+const STATUS_DOC_CHIP  = { ok: 'ok', vencendo: 'vencendo', vencida: 'vencida', sem_validade: 'neutral', faltando: 'aberta' };
+// Agenda de visitas (mesmo catálogo do backend — api.js PERIODICIDADES_VISITA).
+const PERIODICIDADES_VISITA = [
+  { key: 'semanal', label: 'Semanal (1x por semana)' },
+  { key: 'quinzenal', label: 'Quinzenal' },
+  { key: 'mensal', label: 'Mensal' },
+  { key: 'trimestral', label: 'Trimestral' },
+  { key: 'personalizada', label: 'Personalizada (X vezes por semana)' },
+];
+const PERIODICIDADE_VISITA_LABEL = Object.fromEntries(PERIODICIDADES_VISITA.map(p => [p.key, p.label]));
+const STATUS_VISITA_LABEL = { em_dia: 'Em dia', proxima: 'Visita próxima', atrasada: 'Visita atrasada', sem_visita: 'Nunca visitado', sem_periodicidade: 'Periodicidade não definida' };
+const STATUS_VISITA_CHIP  = { em_dia: 'ok', proxima: 'vencendo', atrasada: 'vencida', sem_visita: 'aberta', sem_periodicidade: 'neutral' };
 const CATEGORIAS_EQUIP = { camara_fria: 'Câmara fria', freezer: 'Freezer', balcao: 'Balcão', sala_manipulacao: 'Sala de manipulação', expositor: 'Expositor', outro: 'Outro' };
 const IOT_ENDPOINT = QUALI_API_URL + '/api/iot/leitura';
 

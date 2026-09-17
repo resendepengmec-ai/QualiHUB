@@ -7,6 +7,7 @@
     badge: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="16" rx="1.5"/><circle cx="12" cy="10" r="2"/><path d="M8.5 16a3.5 3.5 0 0 1 7 0"/></svg>',
     users: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M16 19a4 4 0 0 0-8 0"/><circle cx="12" cy="9" r="3"/><path d="M20 19a3 3 0 0 0-3.5-2.9"/><path d="M16.5 10.4a2.5 2.5 0 0 0 0-4.8"/></svg>',
     shield: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/><path d="m9 12 2 2 4-4"/></svg>',
+    calendar: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="16" rx="2"/><path d="M8 3v4M16 3v4M3.5 10h17"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 17.5h.01M12 17.5h.01"/></svg>',
   };
   function _tempoRel(ts) {
     const s = (Date.now() - ts) / 1000;
@@ -56,10 +57,11 @@
       { tab: 'ocorrencias', icon: 'bell', nome: 'Ocorrências', desc: 'Não conformidades', pill: (d.ocorrenciasAbertas > 0) ? ['aberta', `${d.ocorrenciasAbertas} abertas`] : ['ok', 'em dia'], show: true },
       { tab: 'pac', icon: 'clipboard', nome: 'P.A.C.', desc: 'Planilhas de autocontrole', pill: (d.pacAtrasadas > 0) ? ['atraso', `${d.pacAtrasadas} atrasada${d.pacAtrasadas === 1 ? '' : 's'}`] : ['ok', `${d.pacMes ?? 0} este mês`], show: temContrato },
       { tab: 'temperatura', icon: 'thermometer', nome: 'Temperatura', desc: 'Sensores e câmaras', pill: (d.tempFora > 0) ? ['atraso', `${d.sensores ?? 0} sensores · ${d.tempFora} alerta`] : ['neutral', `${d.sensores ?? 0} sensores`], show: temContrato },
+      { tab: 'visitas', icon: 'calendar', nome: 'Visitas', desc: 'Agenda técnica', pill: (d.visitasAtrasadas > 0) ? ['vencida', `${d.visitasAtrasadas} atrasada${d.visitasAtrasadas === 1 ? '' : 's'}`] : ['ok', 'em dia'], show: temContrato },
       { tab: 'cadastro', icon: 'building', nome: 'Cadastro', desc: 'Contratos e equipamentos', pill: ['neutral', `${d.contratos ?? 0} contratos`], show: isAdministradorAnywhere() },
       { tab: 'empresa', icon: 'badge', nome: 'Minha empresa', desc: 'Perfil e logo', pill: ['neutral', 'branding'], show: isMaster() || u.role === 'admin' },
       { tab: 'clientes', icon: 'users', nome: 'Clientes', desc: 'Administração', pill: ['sim', `${d.clientes ?? 0} clientes`], show: isMaster() },
-      { tab: null, icon: 'shield', nome: 'Documentos sanitários', desc: 'Licenças com vencimento', pill: ['neutral', 'em breve'], show: true, soon: true },
+      { tab: 'documentos', icon: 'shield', nome: 'Documentos sanitários', desc: 'Licenças e vencimentos', pill: (d.documentosVencendo > 0) ? ['vencendo', `${d.documentosVencendo} vencendo/vencido${d.documentosVencendo === 1 ? '' : 's'}`] : ['ok', 'em dia'], show: temContrato },
     ];
     $('#hubMods').innerHTML = mods.filter(m => m.show).map(m => `
       <div class="hubcard${m.soon ? ' soon' : ''}" ${m.tab ? `data-tab="${m.tab}"` : ''}>
@@ -70,7 +72,7 @@
     $('#hubMods').querySelectorAll('[data-tab]').forEach(el => el.onclick = () => irPara(el.dataset.tab));
 
     const rec = d.recentes || [];
-    const iconRec = { ocorrencia: 'bell', pac: 'clipboard', iot: 'thermometer' };
+    const iconRec = { ocorrencia: 'bell', pac: 'clipboard', iot: 'thermometer', visita: 'calendar' };
     $('#hubRec').innerHTML = rec.length ? rec.map((x, i) => `
       <div class="recrow"${i ? ' style="border-top:0.5px solid var(--line)"' : ''}>
         <span class="reci">${_ICONE[iconRec[x.tipo] || 'clipboard']}</span>
