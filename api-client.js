@@ -159,27 +159,19 @@ async function startGoogleLogin() {
   window.location.href = 'https://accounts.google.com/o/oauth2/v2/auth?' + params;
 }
 
-// Troca o código de autorização pelo id_token DIRETO com a Google (client
-// "público": PKCE substitui o client_secret — não há segredo no frontend).
-// Chamado por auth-callback.html depois do redirect.
-async function exchangeCodeForIdToken(code) {
+// Troca o código de autorização pelo id_token — no BACKEND, não aqui.
+// Descoberto em produção: a Google exige client_secret na troca do código
+// para clients OAuth do tipo "Web application" mesmo usando PKCE (erro
+// "client_secret is missing" quando a troca era feita direto do navegador,
+// sem segredo). O segredo não pode morar no frontend, então quem troca o
+// código é o backend (ver POST /auth/google em src/auth.js) — o code_verifier
+// ainda viaja até lá, e é a própria Google quem valida ele contra o
+// code_challenge da autorização.
+async function loginWithGoogleCode(code) {
   const verifier = sessionStorage.getItem(PKCE_VERIFIER_KEY);
   sessionStorage.removeItem(PKCE_VERIFIER_KEY);
   if (!verifier) throw new Error('Sessão de login expirada. Tente novamente.');
-  const clientId = await fetchClientId();
-  const res = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id: clientId, code, code_verifier: verifier,
-      grant_type: 'authorization_code', redirect_uri: _redirectBase() + 'auth-callback.html',
-    }),
-  });
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok || !json.id_token) throw new Error(json.error_description || 'Não foi possível concluir o login com o Google.');
-  return json.id_token;
-}
-async function loginWithGoogleToken(idToken) {
-  const data = await API.post('/auth/google', { idToken });
+  const data = await API.post('/auth/google', { code, codeVerifier: verifier, redirectUri: _redirectBase() + 'auth-callback.html' });
   saveSession(data.token, data.user);
   return data.user;
 }

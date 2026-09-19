@@ -31,8 +31,7 @@
       if (errG)  return fail('O Google recusou o login: ' + errG);
       if (!code) return fail('Código do Google não recebido. Tente novamente.');
       try {
-        const idToken = await exchangeCodeForIdToken(code);
-        await loginWithGoogleToken(idToken);
+        await loginWithGoogleCode(code);
         location.replace('app.html');
       } catch (e) {
         fail(e.message || 'Não foi possível entrar.');
