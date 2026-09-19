@@ -63,7 +63,7 @@
     $('#pacFotos').onchange = async (e) => {
       toast('Processando foto…');
       for (const file of [...e.target.files]) { if (fotos.length >= 3) break; fotos.push(await capturarFoto(file)); }
-      $('#pacPrev').innerHTML = fotos.map(f => `<img src="${f.dataUrl}">`).join('');
+      $('#pacPrev').innerHTML = fotos.map(f => `<img src="${esc(f.dataUrl)}">`).join('');
       if (fotos.some(f => f.lat == null)) toast('Foto sem localização — verifique a permissão de local.', true);
       e.target.value = '';
     };
@@ -93,7 +93,7 @@
         } else {
           corpo = tipo.campos.map(c => (rg.dados && rg.dados[c.key] != null && rg.dados[c.key] !== '') ? `${esc(c.label)}: <b>${esc(rg.dados[c.key])}</b>` : null).filter(Boolean).join(' · ') || '<span class="muted">sem dados</span>';
         }
-        const fotos = (rg.fotos || []).map(f => `<img src="${f.dataUrl}">`).join('');
+        const fotos = (rg.fotos || []).map(f => `<img src="${esc(f.dataUrl)}">`).join('');
         return `<div class="card" style="box-shadow:none;border:1px solid var(--line)">
           <div style="display:flex;justify-content:space-between;align-items:center">${chip}<span class="muted" style="font-size:.76rem">${rg.criadoEm ? new Date(rg.criadoEm).toLocaleString('pt-BR') : ''}</span></div>
           <div style="font-size:.85rem;margin-top:6px">${corpo}</div>

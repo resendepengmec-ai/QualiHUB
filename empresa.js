@@ -41,13 +41,13 @@
       </div>
       <label class="field"><span>Endereço</span><input id="pEndereco" value="${esc(perfil.endereco || '')}"></label>
       <label class="field"><span>Logo (aparece no cabeçalho do PDF)</span><input type="file" id="pLogo" accept="image/*"></label>
-      <div id="logoPrev" style="margin:6px 0 4px">${logo ? `<img src="${logo}" style="max-height:70px;border:1px solid var(--line);border-radius:6px;padding:4px;background:#fff">` : '<span class="muted" style="font-size:.82rem">Sem logo</span>'}</div>
+      <div id="logoPrev" style="margin:6px 0 4px">${logo ? `<img src="${esc(logo)}" style="max-height:70px;border:1px solid var(--line);border-radius:6px;padding:4px;background:#fff">` : '<span class="muted" style="font-size:.82rem">Sem logo</span>'}</div>
       ${logo ? '<button class="btn ghost sm" id="pRemoveLogo">Remover logo</button>' : ''}
       <div style="margin-top:14px"><button class="btn primary" id="pSalvar">Salvar</button></div>
     </div>`;
     $('#pLogo').onchange = async (e) => {
       if (!e.target.files[0]) return;
-      try { logo = await _lerLogo(e.target.files[0]); $('#logoPrev').innerHTML = `<img src="${logo}" style="max-height:70px;border:1px solid var(--line);border-radius:6px;padding:4px;background:#fff">`; }
+      try { logo = await _lerLogo(e.target.files[0]); $('#logoPrev').innerHTML = `<img src="${esc(logo)}" style="max-height:70px;border:1px solid var(--line);border-radius:6px;padding:4px;background:#fff">`; }
       catch (err) { toast(err.message, true); }
     };
     const rmBtn = document.getElementById('pRemoveLogo');

@@ -23,14 +23,16 @@
     function fail(t) { msg.textContent = t; document.getElementById('voltar').style.display = 'inline-flex'; }
 
     (async () => {
-      // O fluxo implícito devolve o token no fragmento: #access_token=...
-      const hash  = new URLSearchParams(location.hash.slice(1));
-      const token = hash.get('access_token');
-      const errG  = hash.get('error');
-      if (errG)   return fail('O Google recusou o login: ' + errG);
-      if (!token) return fail('Token do Google não recebido. Tente novamente.');
+      // Authorization Code + PKCE: o código vem na QUERY STRING (?code=...),
+      // não mais no fragmento (#access_token=...) como no fluxo implícito antigo.
+      const qs   = new URLSearchParams(location.search);
+      const code = qs.get('code');
+      const errG = qs.get('error');
+      if (errG)  return fail('O Google recusou o login: ' + errG);
+      if (!code) return fail('Código do Google não recebido. Tente novamente.');
       try {
-        await loginWithGoogleToken(token);
+        const idToken = await exchangeCodeForIdToken(code);
+        await loginWithGoogleToken(idToken);
         location.replace('app.html');
       } catch (e) {
         fail(e.message || 'Não foi possível entrar.');

@@ -101,7 +101,16 @@ function requireSession() {
   return true;
 }
 
-// ── Google OAuth (fluxo implícito, igual ao SGM) ──────────────────
+// ── Google OAuth (Authorization Code + PKCE) ──────────────────────
+// Migrado do fluxo implícito (response_type=token) nesta auditoria: o
+// implicit flow não provava que o token tinha sido emitido especificamente
+// pra este app (o backend só confirmava "é um token Google válido", não
+// "é um token Google válido PRA MIM") — qualquer token de outra aplicação
+// Google com escopo email/profile também entrava. Authorization Code +
+// PKCE troca isso por um id_token (JWT assinado pela Google, com `aud`
+// verificável no backend — ver src/auth.js).
+const PKCE_VERIFIER_KEY = 'quali_pkce_verifier';
+
 async function fetchClientId() {
   let clientId = localStorage.getItem(CLIENT_ID_KEY);
   if (clientId) return clientId;
@@ -112,19 +121,65 @@ async function fetchClientId() {
   } catch (e) {}
   return clientId;
 }
+function _base64url(bytes) {
+  let str = '';
+  bytes.forEach(b => { str += String.fromCharCode(b); });
+  return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+// code_verifier: string aleatória (RFC 7636 — 43 a 128 chars de
+// [A-Za-z0-9-._~]; usamos 32 bytes aleatórios em base64url, que já caem
+// nesse alfabeto e dão 43 chars).
+function _pkceVerifier() {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return _base64url(bytes);
+}
+// code_challenge = BASE64URL(SHA-256(code_verifier)) — a Google confere que
+// bate com o verifier na troca do código, provando que quem troca o código
+// é quem iniciou o login (mesma aba/sessão), não um interceptador do redirect.
+async function _pkceChallenge(verifier) {
+  const data   = new TextEncoder().encode(verifier);
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  return _base64url(new Uint8Array(digest));
+}
+function _redirectBase() { return location.origin + location.pathname.replace(/\/[^/]*$/, '/'); }
+
 async function startGoogleLogin() {
   const clientId = await fetchClientId();
   if (!clientId) throw new Error('Client ID do Google não configurado. Defina GOOGLE_CLIENT_ID no backend ou informe abaixo.');
-  const base   = location.origin + location.pathname.replace(/\/[^/]*$/, '/');
+  const verifier = _pkceVerifier();
+  sessionStorage.setItem(PKCE_VERIFIER_KEY, verifier);
+  const challenge = await _pkceChallenge(verifier);
   const params = new URLSearchParams({
-    client_id: clientId, redirect_uri: base + 'auth-callback.html',
-    response_type: 'token', scope: 'openid email profile',
-    include_granted_scopes: 'true', prompt: 'select_account',
+    client_id: clientId, redirect_uri: _redirectBase() + 'auth-callback.html',
+    response_type: 'code', scope: 'openid email profile',
+    code_challenge: challenge, code_challenge_method: 'S256',
+    access_type: 'online', prompt: 'select_account',
   });
   window.location.href = 'https://accounts.google.com/o/oauth2/v2/auth?' + params;
 }
-async function loginWithGoogleToken(googleToken) {
-  const data = await API.post('/auth/google', { googleToken });
+
+// Troca o código de autorização pelo id_token DIRETO com a Google (client
+// "público": PKCE substitui o client_secret — não há segredo no frontend).
+// Chamado por auth-callback.html depois do redirect.
+async function exchangeCodeForIdToken(code) {
+  const verifier = sessionStorage.getItem(PKCE_VERIFIER_KEY);
+  sessionStorage.removeItem(PKCE_VERIFIER_KEY);
+  if (!verifier) throw new Error('Sessão de login expirada. Tente novamente.');
+  const clientId = await fetchClientId();
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: clientId, code, code_verifier: verifier,
+      grant_type: 'authorization_code', redirect_uri: _redirectBase() + 'auth-callback.html',
+    }),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json.id_token) throw new Error(json.error_description || 'Não foi possível concluir o login com o Google.');
+  return json.id_token;
+}
+async function loginWithGoogleToken(idToken) {
+  const data = await API.post('/auth/google', { idToken });
   saveSession(data.token, data.user);
   return data.user;
 }
@@ -205,6 +260,10 @@ const DB = {
   getPlatformTree:    ()      => API.get('/platform/tree'),
   addPlatformAdmin:   (a)     => API.post('/platform/admins', a),
   removePlatformAdmin:(email) => API.delete(`/platform/admins/${encodeURIComponent(email)}`),
+
+  // Usuários da plataforma (qualquer perfil que já logou) — suspender/reativar (só master)
+  getPlatformUsers:   ()      => API.get('/platform/users'),
+  setUserActive:      (id, active) => API.patch(`/platform/users/${id}/active`, { active }),
 
   // Assinaturas
   verifySignatures:   (id)    => API.get(`/sign/${id}/verify`),

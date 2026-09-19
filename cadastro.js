@@ -49,12 +49,12 @@
         <input id="eCoord" placeholder="-18.16572, -47.94220" value="${esc(coord)}"></label>
       <p class="muted" style="font-size:.76rem;margin-top:-6px">No Google Maps, clique com o botão direito no ponto e clique nas coordenadas para copiar; cole aqui.</p>
       <label class="field"><span>Foto do estabelecimento (opcional)</span><input type="file" id="eFoto" accept="image/*"></label>
-      <div id="eFotoPrev">${ed && e.foto ? `<img src="${e.foto}" style="max-height:80px;border-radius:8px;border:1px solid var(--line)">` : ''}</div>
+      <div id="eFotoPrev">${ed && e.foto ? `<img src="${esc(e.foto)}" style="max-height:80px;border-radius:8px;border:1px solid var(--line)">` : ''}</div>
       <div class="actions"><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="eOk">Salvar</button></div>`);
     let foto = ed ? (e.foto || null) : null;
     $('#eFoto').onchange = async (ev) => {
       if (!ev.target.files[0]) return;
-      try { foto = await _lerLogo(ev.target.files[0]); $('#eFotoPrev').innerHTML = `<img src="${foto}" style="max-height:80px;border-radius:8px;border:1px solid var(--line)">`; }
+      try { foto = await _lerLogo(ev.target.files[0]); $('#eFotoPrev').innerHTML = `<img src="${esc(foto)}" style="max-height:80px;border-radius:8px;border:1px solid var(--line)">`; }
       catch (err) { toast(err.message, true); }
     };
     $('#eOk').onclick = async () => {

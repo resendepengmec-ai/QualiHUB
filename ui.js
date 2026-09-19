@@ -14,9 +14,12 @@
   $('#modalBg').addEventListener('click', e => { if (e.target === $('#modalBg')) closeModal(); });
   const fmtDate = d => d ? new Date(d + (d.length <= 10 ? 'T00:00:00' : '')).toLocaleDateString('pt-BR') : '—';
 
+  // Espelha a regra do backend (api.js): só master ou administrador de
+  // CLIENTE (plataforma) pode criar contrato/estabelecimento novo. Ser
+  // administrador de UM contrato não habilita isso (ver auditoria 0.16) —
+  // o backend já recusa; isto só evita mostrar um botão que vai dar 403.
   function isAdministradorAnywhere() {
     if (isMaster()) return true;
-    if (getCurrentUser().role === 'admin') return true; // administrador de cliente
-    return getAcessos().some(a => a.papel === 'administrador');
+    return getCurrentUser().role === 'admin'; // administrador de cliente
   }
 

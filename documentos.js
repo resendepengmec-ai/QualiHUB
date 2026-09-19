@@ -72,10 +72,16 @@
   }
 
   // Imagem ou, se for PDF, uma prévia embutida (sem navegar/baixar — só olhar).
+  // `arquivo` pode vir do SERVIDOR (documento já salvo, carregado de outro
+  // dispositivo) — o backend só limita o TAMANHO, não o conteúdo. Sem esc(),
+  // um dataUrl malicioso enviado direto pela API (fora desta UI) quebraria o
+  // atributo src="..." e executaria script na tela de quem abrisse este
+  // documento depois (achado e corrigido na auditoria — mesmo padrão de
+  // ocorrencias.js/pac.js/cadastro.js/empresa.js).
   function _anexoPreviewHTML(arquivo, mime, maxH) {
     if (!arquivo) return '';
-    if (mime === 'application/pdf') return `<div style="margin-top:8px"><embed src="${arquivo}" type="application/pdf" style="width:100%;height:220px;border:1px solid var(--line);border-radius:8px"></div>`;
-    return `<div style="margin-top:8px"><img src="${arquivo}" style="max-height:${maxH}px;border:1px solid var(--line);border-radius:8px;padding:4px;background:#fff"></div>`;
+    if (mime === 'application/pdf') return `<div style="margin-top:8px"><embed src="${esc(arquivo)}" type="application/pdf" style="width:100%;height:220px;border:1px solid var(--line);border-radius:8px"></div>`;
+    return `<div style="margin-top:8px"><img src="${esc(arquivo)}" style="max-height:${maxH}px;border:1px solid var(--line);border-radius:8px;padding:4px;background:#fff"></div>`;
   }
 
   // Lê um arquivo (PDF cru, ou imagem redimensionada) para anexar/enviar à

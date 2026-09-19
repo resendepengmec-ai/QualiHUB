@@ -106,7 +106,7 @@
     $('#fFotos').onchange = async (e) => {
       toast('Processando foto…');
       for (const file of [...e.target.files]) { if (fotos.length >= 3) break; fotos.push(await capturarFoto(file)); }
-      $('#fPrev').innerHTML = fotos.map(f => `<img src="${f.dataUrl}" alt="">`).join('');
+      $('#fPrev').innerHTML = fotos.map(f => `<img src="${esc(f.dataUrl)}" alt="">`).join('');
       if (fotos.some(f => f.lat == null)) toast('Foto salva sem localização — verifique a permissão de local.', true);
       e.target.value = '';
     };
@@ -150,7 +150,7 @@
     pedirLocalizacao();
     const render = () => {
       const all = manter.concat(novas);
-      q('#fPrev').innerHTML = all.map((f, i) => `<div class="fotowrap"><img src="${f.dataUrl}" alt=""><button type="button" class="fotorm" data-i="${i}" aria-label="Excluir foto">×</button></div>`).join('');
+      q('#fPrev').innerHTML = all.map((f, i) => `<div class="fotowrap"><img src="${esc(f.dataUrl)}" alt=""><button type="button" class="fotorm" data-i="${i}" aria-label="Excluir foto">×</button></div>`).join('');
       q('#fPrev').querySelectorAll('.fotorm').forEach(b => b.onclick = () => {
         const i = +b.dataset.i;
         if (i < manter.length) { manter.splice(i, 1); toast('Foto excluída.'); }
@@ -187,7 +187,7 @@
     $('#rFotos').onchange = async (e) => {
       toast('Processando foto…');
       for (const file of [...e.target.files]) { if (fotos.length >= 3) break; fotos.push(await capturarFoto(file)); }
-      $('#rPrev').innerHTML = fotos.map(f => `<img src="${f.dataUrl}" alt="">`).join('');
+      $('#rPrev').innerHTML = fotos.map(f => `<img src="${esc(f.dataUrl)}" alt="">`).join('');
       if (fotos.some(f => f.lat == null)) toast('Foto salva sem localização — verifique a permissão de local do navegador.', true);
       e.target.value = '';
     };
