@@ -39,8 +39,10 @@
         <div class="kpi"><div class="n">—</div><div class="lbl">Registros do P.A.C. (mês)</div></div>
         <div class="kpi"><div class="n">—</div><div class="lbl">Temperatura fora da faixa (7d)</div></div>
       </div>
-      <div class="eyebrow" style="margin:22px 0 10px">Módulos</div>
-      <div class="hubgrid" id="hubMods"></div>
+      <div class="eyebrow" id="hubGrupoClienteLbl" style="margin:22px 0 10px">Cliente</div>
+      <div class="hubgrid" id="hubModsCliente"></div>
+      <div class="eyebrow" id="hubGrupoEmpresaLbl" style="margin:22px 0 10px">Empresa</div>
+      <div class="hubgrid" id="hubModsEmpresa"></div>
       <button class="hubacc" id="recToggle" aria-expanded="false"><span class="eyebrow" style="margin:0">Atividade recente</span><span class="accchev" id="recChev">▸</span></button>
       <div id="hubRec" class="card" style="padding:0;display:none"><div class="muted" style="padding:14px 16px">Carregando…</div></div>`;
 
@@ -53,23 +55,35 @@
       <div class="kpi"><div class="n ${d.tempFora ? 'danger' : 'ok'}">${d.tempFora ?? '—'}</div><div class="lbl">Temperatura fora da faixa (7d)</div></div>`;
 
     const temContrato = !!getContratoAtual();
+    // Dois grupos visuais fixos — CLIENTE (módulos do contrato selecionado)
+    // e EMPRESA (administração) — nessa ordem. A lógica de "show" de cada
+    // módulo é a mesma de sempre, só reorganizada visualmente; nenhuma regra
+    // de permissão/visibilidade mudou aqui.
     const mods = [
-      { tab: 'ocorrencias', icon: 'bell', nome: 'Ocorrências', desc: 'Não conformidades', pill: (d.ocorrenciasAbertas > 0) ? ['aberta', `${d.ocorrenciasAbertas} abertas`] : ['ok', 'em dia'], show: true },
-      { tab: 'pac', icon: 'clipboard', nome: 'P.A.C.', desc: 'Planilhas de autocontrole', pill: (d.pacAtrasadas > 0) ? ['atraso', `${d.pacAtrasadas} atrasada${d.pacAtrasadas === 1 ? '' : 's'}`] : ['ok', `${d.pacMes ?? 0} este mês`], show: temContrato },
-      { tab: 'temperatura', icon: 'thermometer', nome: 'Temperatura', desc: 'Sensores e câmaras', pill: (d.tempFora > 0) ? ['atraso', `${d.sensores ?? 0} sensores · ${d.tempFora} alerta`] : ['neutral', `${d.sensores ?? 0} sensores`], show: temContrato },
-      { tab: 'visitas', icon: 'calendar', nome: 'Visitas', desc: 'Agenda técnica', pill: (d.visitasAtrasadas > 0) ? ['vencida', `${d.visitasAtrasadas} atrasada${d.visitasAtrasadas === 1 ? '' : 's'}`] : ['ok', 'em dia'], show: temContrato },
-      { tab: 'cadastro', icon: 'building', nome: 'Cadastro', desc: 'Contratos e equipamentos', pill: ['neutral', `${d.contratos ?? 0} contratos`], show: isAdministradorAnywhere() },
-      { tab: 'empresa', icon: 'badge', nome: 'Minha empresa', desc: 'Perfil e logo', pill: ['neutral', 'branding'], show: isMaster() || u.role === 'admin' },
-      { tab: 'clientes', icon: 'users', nome: 'Clientes', desc: 'Administração', pill: ['sim', `${d.clientes ?? 0} clientes`], show: isMaster() },
-      { tab: 'documentos', icon: 'shield', nome: 'Documentos sanitários', desc: 'Licenças e vencimentos', pill: (d.documentosVencendo > 0) ? ['vencendo', `${d.documentosVencendo} vencendo/vencido${d.documentosVencendo === 1 ? '' : 's'}`] : ['ok', 'em dia'], show: temContrato },
+      { tab: 'ocorrencias', icon: 'bell', nome: 'Ocorrências', desc: 'Não conformidades', pill: (d.ocorrenciasAbertas > 0) ? ['aberta', `${d.ocorrenciasAbertas} abertas`] : ['ok', 'em dia'], show: true, grupo: 'cliente' },
+      { tab: 'pac', icon: 'clipboard', nome: 'P.A.C.', desc: 'Planilhas de autocontrole', pill: (d.pacAtrasadas > 0) ? ['atraso', `${d.pacAtrasadas} atrasada${d.pacAtrasadas === 1 ? '' : 's'}`] : ['ok', `${d.pacMes ?? 0} este mês`], show: temContrato, grupo: 'cliente' },
+      { tab: 'temperatura', icon: 'thermometer', nome: 'Temperatura', desc: 'Sensores e câmaras', pill: (d.tempFora > 0) ? ['atraso', `${d.sensores ?? 0} sensores · ${d.tempFora} alerta`] : ['neutral', `${d.sensores ?? 0} sensores`], show: temContrato, grupo: 'cliente' },
+      { tab: 'visitas', icon: 'calendar', nome: 'Visitas', desc: 'Agenda técnica', pill: (d.visitasAtrasadas > 0) ? ['vencida', `${d.visitasAtrasadas} atrasada${d.visitasAtrasadas === 1 ? '' : 's'}`] : ['ok', 'em dia'], show: temContrato, grupo: 'cliente' },
+      { tab: 'documentos', icon: 'shield', nome: 'Documentos sanitários', desc: 'Licenças e vencimentos', pill: (d.documentosVencendo > 0) ? ['vencendo', `${d.documentosVencendo} vencendo/vencido${d.documentosVencendo === 1 ? '' : 's'}`] : ['ok', 'em dia'], show: temContrato, grupo: 'cliente' },
+      { tab: 'cadastro', icon: 'building', nome: 'Cadastro', desc: 'Contratos e equipamentos', pill: ['neutral', `${d.contratos ?? 0} contratos`], show: isAdministradorAnywhere(), grupo: 'empresa' },
+      { tab: 'empresa', icon: 'badge', nome: 'Minha empresa', desc: 'Perfil e logo', pill: ['neutral', 'branding'], show: isMaster() || u.role === 'admin', grupo: 'empresa' },
+      { tab: 'clientes', icon: 'users', nome: 'Clientes', desc: 'Administração', pill: ['sim', `${d.clientes ?? 0} clientes`], show: isMaster(), grupo: 'empresa' },
     ];
-    $('#hubMods').innerHTML = mods.filter(m => m.show).map(m => `
+    const cardHTML = m => `
       <div class="hubcard${m.soon ? ' soon' : ''}" ${m.tab ? `data-tab="${m.tab}"` : ''}>
         <div class="hubtop"><div class="hubico">${_ICONE[m.icon]}</div>
           <div><div class="hubname">${m.nome}</div><div class="hubdesc">${m.desc}</div></div></div>
         <span class="chip ${m.pill[0]}">${m.pill[1]}</span>
-      </div>`).join('');
-    $('#hubMods').querySelectorAll('[data-tab]').forEach(el => el.onclick = () => irPara(el.dataset.tab));
+      </div>`;
+    const cliente = mods.filter(m => m.grupo === 'cliente' && m.show);
+    const empresa = mods.filter(m => m.grupo === 'empresa' && m.show);
+    $('#hubGrupoClienteLbl').style.display = cliente.length ? '' : 'none';
+    $('#hubModsCliente').style.display = cliente.length ? '' : 'none';
+    $('#hubModsCliente').innerHTML = cliente.map(cardHTML).join('');
+    $('#hubGrupoEmpresaLbl').style.display = empresa.length ? '' : 'none';
+    $('#hubModsEmpresa').style.display = empresa.length ? '' : 'none';
+    $('#hubModsEmpresa').innerHTML = empresa.map(cardHTML).join('');
+    view.querySelectorAll('[data-tab]').forEach(el => el.onclick = () => irPara(el.dataset.tab));
 
     const rec = d.recentes || [];
     const iconRec = { ocorrencia: 'bell', pac: 'clipboard', iot: 'thermometer', visita: 'calendar' };

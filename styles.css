@@ -168,8 +168,11 @@ textarea { min-height: 84px; resize: vertical; }
 .modal-bg { position: fixed; inset: 0; background: rgba(18,33,28,.4); display: none; place-items: center; z-index: 40; padding: 16px; }
 .modal-bg.show { display: grid; }
 .modal { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); width: 100%; max-width: 520px; max-height: 90vh; overflow: auto; padding: 22px; }
+.modal:focus { outline: none; }
 .modal h2 { margin-bottom: 4px; }
 .modal .actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+/* Trava de scroll do body com o modal aberto (ver ui.js openModal/closeModal) */
+body.modal-open { overflow: hidden; }
 
 /* fotos */
 .fotos { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
@@ -211,10 +214,24 @@ textarea { min-height: 84px; resize: vertical; }
   /* Campos lado a lado passam a empilhar */
   .row > * { flex-basis: 100%; }
 
-  /* Modal ocupa melhor a tela; ações empilhadas com a ação principal no topo */
-  .modal { padding: 18px; }
+  /* Modal vira folha quase cheia (bottom-sheet-like) em vez de caixa
+     centralizada pequena — mais espaço útil pra formulários em telas
+     estreitas. env(safe-area-inset-*) evita conteúdo colado no notch/home
+     indicator do iOS sem adicionar respiro em aparelhos sem notch (o
+     env() resolve pra 0 nesse caso). */
+  .modal-bg { padding: 0; align-items: flex-end; }
+  .modal {
+    max-width: none; width: 100%; max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px);
+    border-radius: var(--radius) var(--radius) 0 0;
+    padding: 18px calc(18px + env(safe-area-inset-right)) calc(18px + env(safe-area-inset-bottom)) calc(18px + env(safe-area-inset-left));
+  }
   .modal .actions { flex-direction: column-reverse; gap: 8px; }
   .modal .actions .btn { width: 100%; }
+}
+/* Appbar sticky não deve ficar sob o notch/status bar do iOS em landscape */
+.appbar { padding-left: calc(20px + env(safe-area-inset-left)); padding-right: calc(20px + env(safe-area-inset-right)); }
+@media (max-width: 640px) {
+  .appbar { padding-left: calc(14px + env(safe-area-inset-left)); padding-right: calc(14px + env(safe-area-inset-right)); }
 }
 @media (max-width: 380px) {
   .kpi .n { font-size: 1.7rem; }

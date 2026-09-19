@@ -136,22 +136,47 @@
       if (d.rt && (d.rt.nome || d.rt.conselho)) body.push({ text: [{ text: 'Responsável Técnico: ', bold: true }, { text: (d.rt.nome || '') + (d.rt.conselho ? ' — ' + d.rt.conselho : '') }], fontSize: 8.5, margin: [0, 6, 0, 2] });
       body.push({ text: [{ text: 'Assinatura digital (HMAC): ', bold: true }, { text: d.assinatura.hash }], fontSize: 7.5, margin: [0, 6, 0, 0] });
       body.push({ text: 'keyId: ' + d.assinatura.keyId + '  -  documento gerado em ' + geradoEm, fontSize: 7.5, color: '#5e6b65' });
-      pdfMake.createPdf({
+      return _finalizarPdf({
         pageSize: 'A4', pageMargins: [40, temBranding ? 96 : 70, 40, 42],
         header, footer, content: body, defaultStyle: { fontSize: 10, color: '#12211c' },
-      }).download('pac-' + (d.escopo.contratoNumero || '') + '.pdf');
+      }, 'pac-' + (d.escopo.contratoNumero || '') + '.pdf');
     }).catch(e => toast('Nao foi possivel gerar o PDF: ' + e.message, true));
   }
 
-  // Carrega o pdfmake sob demanda (CDN) para gerar PDF A4 formatado.
+  // Carrega o pdfmake sob demanda (CDN) para gerar PDF A4 formatado. Duas
+  // fontes (cdnjs, depois jsdelivr) — em rede móvel/corporativa é comum UMA
+  // CDN estar bloqueada/lenta mas não a outra; sem isto, "Gerar PDF" falhava
+  // de forma pouco clara sempre que a única fonte configurada estava fora.
   let _pdfLoad;
+  const _PDFMAKE_SRCS = [
+    ['https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.10/pdfmake.min.js', 'https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.10/vfs_fonts.js'],
+    ['https://cdn.jsdelivr.net/npm/pdfmake@0.2.10/build/pdfmake.min.js', 'https://cdn.jsdelivr.net/npm/pdfmake@0.2.10/build/vfs_fonts.js'],
+  ];
   function ensurePdfMake() {
     if (window.pdfMake && window.pdfMake.vfs) return Promise.resolve();
     if (_pdfLoad) return _pdfLoad;
     const load = (src) => new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('Falha ao carregar ' + src)); document.head.appendChild(s); });
-    _pdfLoad = load('https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.10/pdfmake.min.js')
-      .then(() => load('https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.10/vfs_fonts.js'));
+    const tentar = (i) => load(_PDFMAKE_SRCS[i][0]).then(() => load(_PDFMAKE_SRCS[i][1]))
+      .catch(err => { if (i + 1 < _PDFMAKE_SRCS.length) return tentar(i + 1); throw new Error('Não foi possível carregar o gerador de PDF (sem conexão com as CDNs). Verifique sua internet e tente novamente.'); });
+    _pdfLoad = tentar(0).catch(err => { _pdfLoad = null; throw err; });
     return _pdfLoad;
+  }
+
+  // Finaliza um docDefinition do pdfMake: pega o Blob (em vez de só chamar
+  // .download(), que no iOS Safari costuma abrir o PDF sem oferecer "Salvar")
+  // e usa openOrShareFile() (file-output.js) — Web Share quando disponível,
+  // download por Blob URL como fallback. Dá feedback de sucesso/erro sempre;
+  // nunca deixa o usuário sem saber se funcionou.
+  function _finalizarPdf(docDefinition, filename) {
+    return new Promise((resolve, reject) => {
+      try {
+        pdfMake.createPdf(docDefinition).getBlob(blob => {
+          openOrShareFile(blob, filename, 'application/pdf')
+            .then(resultado => { if (resultado !== 'cancelled') toast('PDF pronto.'); resolve(resultado); })
+            .catch(reject);
+        });
+      } catch (e) { reject(e); }
+    });
   }
 
   function gerarRelatorioPDF(d) {
@@ -227,12 +252,12 @@
       body.push({ text: 'As fotos carregam o rotulo de data/hora e localizacao registrados pelo dispositivo no momento da captura.', fontSize: 7.5, color: '#8a938e', margin: [0, 3, 0, 0] });
 
       const nomeArq = 'ocorrencias' + (d.escopo.contratoNumero ? '-' + d.escopo.contratoNumero : '') + '.pdf';
-      pdfMake.createPdf({
+      return _finalizarPdf({
         pageSize: 'A4',
         pageMargins: [40, temBranding ? 96 : 70, 40, 42],
         header, footer, content: body,
         defaultStyle: { fontSize: 10, color: '#12211c' },
-      }).download(nomeArq);
+      }, nomeArq);
     }).catch(e => toast('Nao foi possivel gerar o PDF: ' + e.message, true));
   }
 
@@ -325,10 +350,10 @@
       if (d.rt && (d.rt.nome || d.rt.conselho)) body.push({ text: [{ text: 'Responsável Técnico: ', bold: true }, { text: (d.rt.nome || '') + (d.rt.conselho ? ' — ' + d.rt.conselho : '') }], fontSize: 8.5, margin: [0, 6, 0, 2] });
       body.push({ text: [{ text: 'Assinatura digital (HMAC): ', bold: true }, { text: d.assinatura.hash }], fontSize: 7.5, margin: [0, 6, 0, 0] });
       body.push({ text: 'keyId: ' + d.assinatura.keyId + '  -  documento gerado em ' + geradoEm, fontSize: 7.5, color: '#5e6b65' });
-      pdfMake.createPdf({
+      return _finalizarPdf({
         pageSize: 'A4', pageMargins: [40, temBranding ? 96 : 70, 40, 42],
         header, footer, content: body, defaultStyle: { fontSize: 10, color: '#12211c' },
-      }).download('documentos-' + (d.escopo.contratoNumero || '') + '.pdf');
+      }, 'documentos-' + (d.escopo.contratoNumero || '') + '.pdf');
     }).catch(e => toast('Nao foi possivel gerar o PDF: ' + e.message, true));
   }
 

@@ -20,10 +20,14 @@ const CHECKS = [
   { file: 'pac.js',         pattern: /src="\$\{(?!esc\()f\.dataUrl\}/ },
   { file: 'empresa.js',     pattern: /src="\$\{(?!esc\()logo\}/ },
   { file: 'cadastro.js',    pattern: /src="\$\{(?!esc\()(e\.foto|foto)\}/ },
-  // documentos.js: PDF vira um chip (ícone + Abrir/Salvar) em vez de <embed>
-  // — checa src="${arquivo}" (imagem) E href="${arquivo}" (os dois links do
-  // chip de PDF), ambos sem esc().
-  { file: 'documentos.js',  pattern: /(src|href)="\$\{(?!esc\()arquivo\}/ },
+  // documentos.js: PDF vira um chip (ícone + botões Abrir/Salvar, via
+  // file-output.js/Blob) em vez de <embed> — checa src="${arquivo}" (imagem)
+  // E data-arquivo="${arquivo}" (os botões do chip de PDF), ambos sem esc().
+  { file: 'documentos.js',  pattern: /(src|data-arquivo)="\$\{(?!esc\()arquivo\}/ },
+  // ui.js: lightbox de fotos (_openLightbox) recebe img.src (já era um
+  // dataUrl vindo do servidor, reaproveitado da miniatura) — precisa de
+  // esc() antes de virar innerHTML de novo, senão reabre o mesmo XSS.
+  { file: 'ui.js',          pattern: /src="\$\{(?!esc\()src\}/ },
 ];
 
 let pass = 0, fail = 0;

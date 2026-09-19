@@ -94,8 +94,8 @@
       return `<div style="margin-top:8px;display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);flex-wrap:wrap">
         <span style="flex:none;display:flex;color:var(--muted)" aria-hidden="true">${_ICONE_PDF}</span>
         <span style="flex:1 1 100px;min-width:0;font-size:.84rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(nome)}">${esc(nome)}</span>
-        <a class="btn ghost sm" href="${esc(arquivo)}" target="_blank" rel="noopener">Abrir</a>
-        <a class="btn ghost sm" href="${esc(arquivo)}" download="${esc(nome)}">Salvar</a>
+        <button type="button" class="btn ghost sm" data-pdf-open data-arquivo="${esc(arquivo)}" data-nome="${esc(nome)}">Abrir</button>
+        <button type="button" class="btn ghost sm" data-pdf-save data-arquivo="${esc(arquivo)}" data-nome="${esc(nome)}">Salvar</button>
       </div>`;
     }
     return `<div style="margin-top:8px"><img src="${esc(arquivo)}" style="max-height:${maxH}px;border:1px solid var(--line);border-radius:8px;padding:4px;background:#fff"></div>`;

@@ -9,9 +9,56 @@
     const t = $('#toast'); t.textContent = msg; t.className = 'toast show' + (err ? ' err' : '');
     setTimeout(() => t.className = 'toast', 2600);
   }
-  function openModal(html) { $('#modal').innerHTML = html; $('#modalBg').classList.add('show'); }
-  function closeModal() { $('#modalBg').classList.remove('show'); }
+  // Trava o scroll do body enquanto o modal está aberto (sem isto, em mobile
+  // dava pra rolar o conteúdo por trás do modal); devolve o foco a quem abriu
+  // ao fechar, e foca o próprio modal ao abrir (teclado/leitor de tela).
+  let _modalReturnFocus = null;
+  function openModal(html) {
+    _modalReturnFocus = document.activeElement;
+    const modal = $('#modal');
+    modal.innerHTML = html;
+    $('#modalBg').classList.add('show');
+    document.body.classList.add('modal-open');
+    modal.setAttribute('tabindex', '-1');
+    modal.focus({ preventScroll: true });
+  }
+  function closeModal() {
+    $('#modalBg').classList.remove('show');
+    document.body.classList.remove('modal-open');
+    if (_modalReturnFocus && typeof _modalReturnFocus.focus === 'function') _modalReturnFocus.focus({ preventScroll: true });
+    _modalReturnFocus = null;
+  }
   $('#modalBg').addEventListener('click', e => { if (e.target === $('#modalBg')) closeModal(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#modalBg').classList.contains('show')) closeModal(); });
+
+  // ── Lightbox de fotos ─────────────────────────────────────────────
+  // Miniaturas (.fotos img, em ocorrências/P.A.C.) só mostram um thumbnail
+  // pequeno; toque/clique amplia numa camada própria (não reaproveita
+  // #modal porque as miniaturas costumam estar DENTRO de um modal de
+  // edição já aberto — precisa empilhar por cima, não substituir).
+  let _lightboxReturnFocus = null;
+  function _closeLightbox() {
+    const lb = document.getElementById('_lightbox');
+    if (lb) lb.remove();
+    if (_lightboxReturnFocus && typeof _lightboxReturnFocus.focus === 'function') _lightboxReturnFocus.focus({ preventScroll: true });
+    _lightboxReturnFocus = null;
+  }
+  function _openLightbox(src) {
+    _lightboxReturnFocus = document.activeElement;
+    const lb = document.createElement('div');
+    lb.id = '_lightbox';
+    lb.style.cssText = 'position:fixed;inset:0;z-index:60;background:rgba(10,16,13,.88);display:flex;align-items:center;justify-content:center;padding:calc(16px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));cursor:zoom-out';
+    lb.innerHTML = `<img src="${esc(src)}" alt="" style="max-width:100%;max-height:100%;border-radius:8px;object-fit:contain">`;
+    lb.tabIndex = -1;
+    lb.addEventListener('click', _closeLightbox);
+    document.body.appendChild(lb);
+    lb.focus({ preventScroll: true });
+  }
+  document.addEventListener('click', e => {
+    const img = e.target.closest('.fotos img');
+    if (img) _openLightbox(img.src);
+  });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && document.getElementById('_lightbox')) _closeLightbox(); });
   const fmtDate = d => d ? new Date(d + (d.length <= 10 ? 'T00:00:00' : '')).toLocaleDateString('pt-BR') : '—';
 
   // Espelha a regra do backend (api.js): só master ou administrador de
