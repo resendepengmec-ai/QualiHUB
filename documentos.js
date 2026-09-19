@@ -60,7 +60,7 @@
           ${d.numero ? 'Nº ' + esc(d.numero) + ' · ' : ''}${d.orgaoEmissor ? esc(d.orgaoEmissor) + ' · ' : ''}${d.validade ? 'Validade: ' + fmtDate(d.validade) : (d.validadeEfetiva ? 'Vencimento estimado (periodicidade): ' + fmtDate(d.validadeEfetiva) : 'Sem validade definida')}
         </div>
         ${d.observacoes ? `<div style="font-size:.85rem;margin-top:6px">${esc(d.observacoes)}</div>` : ''}
-        ${_anexoPreviewHTML(d.arquivo, d.arquivoMime, 90)}
+        ${_anexoPreviewHTML(d.arquivo, d.arquivoMime, 90, d.tipoLabel || d.tipo)}
       </div>`).join('')
       : `<div class="empty"><strong>Nenhum documento cadastrado</strong>Cadastre as licenças sanitárias deste contrato para acompanhar o vencimento.</div>`;
     body.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => abrirDocumentoModal(cid, docs.find(x => x.id === b.dataset.edit), podeGerir));
@@ -71,16 +71,33 @@
     });
   }
 
-  // Imagem ou, se for PDF, uma prévia embutida (sem navegar/baixar — só olhar).
-  // `arquivo` pode vir do SERVIDOR (documento já salvo, carregado de outro
-  // dispositivo) — o backend só limita o TAMANHO, não o conteúdo. Sem esc(),
-  // um dataUrl malicioso enviado direto pela API (fora desta UI) quebraria o
-  // atributo src="..." e executaria script na tela de quem abrisse este
-  // documento depois (achado e corrigido na auditoria — mesmo padrão de
-  // ocorrencias.js/pac.js/cadastro.js/empresa.js).
-  function _anexoPreviewHTML(arquivo, mime, maxH) {
+  // Ícone de documento PDF (mesmo estilo stroke-based dos ícones do hub em dashboard.js).
+  const _ICONE_PDF = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h7l4 4v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v4h4"/><path d="M8.5 12.5h1.2a1.3 1.3 0 0 1 0 2.6H8.5v-2.6zm0 0v4.5M12.3 12.5h1.4a1.3 1.3 0 0 1 1.3 1.3v1.9a1.3 1.3 0 0 1-1.3 1.3h-1.4v-4.5zM17 12.5h-1.6v4.5M15.4 14.7H17"/></svg>';
+
+  // Imagem: preview pequeno (já era assim). PDF: NÃO embute o visualizador
+  // inteiro do navegador (poluía a tela com um retângulo grande) — mostra só
+  // um chip compacto (ícone + nome) com ações "Abrir" (nova aba) e "Salvar"
+  // (download). `arquivo` pode vir do SERVIDOR (documento já salvo, carregado
+  // de outro dispositivo) — o backend só limita o TAMANHO, não o conteúdo.
+  // Sem esc(), um dataUrl malicioso enviado direto pela API (fora desta UI)
+  // quebraria o atributo src=/href="..." e executaria script na tela de quem
+  // abrisse este documento depois (achado e corrigido na auditoria — mesmo
+  // padrão de ocorrencias.js/pac.js/cadastro.js/empresa.js).
+  function _anexoPreviewHTML(arquivo, mime, maxH, nomeSugerido) {
     if (!arquivo) return '';
-    if (mime === 'application/pdf') return `<div style="margin-top:8px"><embed src="${esc(arquivo)}" type="application/pdf" style="width:100%;height:220px;border:1px solid var(--line);border-radius:8px"></div>`;
+    if (mime === 'application/pdf') {
+      // Rótulos do catálogo têm "/" (ex.: "Alvará Sanitário / Licença de
+      // funcionamento") — sanitiza pra não virar (ou parecer) um caminho no
+      // nome do arquivo baixado.
+      const base = (nomeSugerido || 'documento').replace(/\.pdf$/i, '').replace(/[\\/:*?"<>|]+/g, '-').trim() || 'documento';
+      const nome = `${base}.pdf`;
+      return `<div style="margin-top:8px;display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);flex-wrap:wrap">
+        <span style="flex:none;display:flex;color:var(--muted)" aria-hidden="true">${_ICONE_PDF}</span>
+        <span style="flex:1 1 100px;min-width:0;font-size:.84rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(nome)}">${esc(nome)}</span>
+        <a class="btn ghost sm" href="${esc(arquivo)}" target="_blank" rel="noopener">Abrir</a>
+        <a class="btn ghost sm" href="${esc(arquivo)}" download="${esc(nome)}">Salvar</a>
+      </div>`;
+    }
     return `<div style="margin-top:8px"><img src="${esc(arquivo)}" style="max-height:${maxH}px;border:1px solid var(--line);border-radius:8px;padding:4px;background:#fff"></div>`;
   }
 
@@ -118,7 +135,7 @@
         <label class="field"><span>Validade (em branco se não vence)</span><input type="date" id="dValidade" value="${ed ? (d.validade || '') : ''}"></label></div>
       <label class="field"><span>Observações</span><textarea id="dObs">${ed ? esc(d.observacoes || '') : ''}</textarea></label>
       <label class="field"><span>Anexo (opcional — foto, scan ou PDF do documento)</span><input type="file" id="dArquivo" accept="image/*,application/pdf"></label>
-      <div id="dArquivoPrev">${_anexoPreviewHTML(ed ? d.arquivo : null, ed ? d.arquivoMime : null, 80)}</div>
+      <div id="dArquivoPrev">${_anexoPreviewHTML(ed ? d.arquivo : null, ed ? d.arquivoMime : null, 80, ed ? (d.tipoLabel || d.tipo) : null)}</div>
       <div id="dIaWrap" style="display:none;margin:4px 0 14px">
         <button type="button" class="btn ghost sm" id="dIaBtn">✨ Ler documento automaticamente (IA)</button>
         <p class="muted" style="font-size:.74rem;margin:4px 0 0">A leitura é uma sugestão — confira e ajuste os campos antes de salvar. Nada é preenchido sem você confirmar.</p>
@@ -134,7 +151,9 @@
       try {
         const lido = await _lerAnexo(file);
         arquivo = lido.dataUrl; arquivoMime = lido.mime;
-        $('#dArquivoPrev').innerHTML = _anexoPreviewHTML(arquivo, arquivoMime, 80);
+        const tipoSel = $('#dTipo').value;
+        const nomeAtual = tipoSel === 'outro' ? $('#dTipoOutro').value.trim() : (TIPOS_DOCUMENTO.find(t => t.key === tipoSel) || {}).label;
+        $('#dArquivoPrev').innerHTML = _anexoPreviewHTML(arquivo, arquivoMime, 80, nomeAtual);
         $('#dIaWrap').style.display = 'block';
       } catch (err) { toast(err.message, true); }
     };

@@ -20,7 +20,10 @@ const CHECKS = [
   { file: 'pac.js',         pattern: /src="\$\{(?!esc\()f\.dataUrl\}/ },
   { file: 'empresa.js',     pattern: /src="\$\{(?!esc\()logo\}/ },
   { file: 'cadastro.js',    pattern: /src="\$\{(?!esc\()(e\.foto|foto)\}/ },
-  { file: 'documentos.js',  pattern: /src="\$\{(?!esc\()arquivo\}/ },
+  // documentos.js: PDF vira um chip (ícone + Abrir/Salvar) em vez de <embed>
+  // — checa src="${arquivo}" (imagem) E href="${arquivo}" (os dois links do
+  // chip de PDF), ambos sem esc().
+  { file: 'documentos.js',  pattern: /(src|href)="\$\{(?!esc\()arquivo\}/ },
 ];
 
 let pass = 0, fail = 0;
