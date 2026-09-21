@@ -55,37 +55,21 @@
     </div>
   </div>
 
-  <!-- Saiba mais -->
+  <!-- Saiba mais — conteúdo montado por saiba-mais.js (mesma função usada
+       dentro do app, ver app.html), só o botão "Entendi" fica fora. -->
   <div class="modal-bg" id="modalBg">
     <div class="modal">
-      <div class="eyebrow">Sobre o sistema</div>
-      <h2>QShub</h2>
-      <p style="margin:.5rem 0 0">O QShub (powered by Qualiservice) é um sistema de gestão de qualidade de alimentos. Ele reúne, por
-        contrato, os documentos sanitários, o acompanhamento de não conformidades e os controles de
-        autocontrole (P.A.C.), com indicadores de desempenho.</p>
-
-      <h3 style="margin-top:16px">O que você encontra aqui</h3>
-      <ul style="margin:.4rem 0 0;padding-left:1.1rem;font-size:.9rem;line-height:1.7">
-        <li><strong>Meus Contratos</strong> — documentos sanitários e saúde ocupacional de cada contrato.</li>
-        <li><strong>Ocorrências</strong> — registro e tratamento das não conformidades, com prazo e responsável.</li>
-        <li><strong>P.A.C.</strong> — planilhas de autocontrole por produto e por ambiente.</li>
-        <li><strong>Dashboard</strong> — indicadores de desempenho, como o prazo de atendimento.</li>
-      </ul>
-
-      <h3 style="margin-top:16px">Acesso</h3>
-      <p style="margin:.4rem 0 0;font-size:.9rem">Você entra com sua conta Google. O acesso é restrito: só e-mails
-        autorizados pelo administrador do contrato conseguem entrar, e cada pessoa vê apenas os contratos aos
-        quais foi vinculada.</p>
-
-      <p class="muted" style="font-size:.78rem;margin-top:16px">Sistema privado, de uso restrito aos clientes e
-        equipes autorizadas. Em caso de dúvida sobre seu acesso, fale com o administrador do seu contrato.</p>
-
+      <div id="saibaConteudo"></div>
       <div class="actions"><button class="btn primary" id="btnFechaSaiba">Entendi</button></div>
     </div>
   </div>
 
   <script src="config.js"></script>
   <script src="api-client.js"></script>
+  <script src="saiba-mais.js"></script>
+  <script>
+    document.getElementById('saibaConteudo').innerHTML = saibaMaisHTML();
+  </script>
   <script>
     const msg = document.getElementById('msg');
     const cfg = document.getElementById('cfg');

@@ -10,6 +10,7 @@
       (u.picture ? `<img src="${esc(u.picture)}" alt="">` : '') +
       `<span>${esc(u.name || u.email)}${isMaster() ? ' · <strong>Master</strong>' : ''}</span>`;
     $('#btnSair').onclick = () => logout();
+    $('#btnSaibaApp').onclick = () => openModal(saibaMaisHTML() + '<div class="actions"><button class="btn primary" onclick="closeModal()">Entendi</button></div>');
 
     await carregarContratos();
     const home = () => irPara('dashboard');

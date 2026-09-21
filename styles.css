@@ -280,6 +280,24 @@ body.modal-open { overflow: hidden; }
 .hubacc { display: flex; align-items: center; justify-content: space-between; width: 100%; background: none; border: 0; padding: 6px 0; margin: 24px 0 8px; cursor: pointer; color: var(--muted); font: inherit; }
 .accchev { color: var(--muted); font-size: .8rem; }
 
+/* ── "Saiba mais" (Etapa 4) — diagrama em HTML/CSS puro ──────────── */
+.saiba-diagrama { display: flex; align-items: stretch; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+.saiba-passo { flex: 1 1 150px; background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px 12px; }
+.saiba-passo-t { font-weight: 700; font-size: .86rem; color: var(--primary-ink); }
+.saiba-passo-d { font-size: .78rem; color: var(--muted); margin-top: 4px; line-height: 1.4; }
+.saiba-seta { display: flex; align-items: center; justify-content: center; color: var(--primary); font-weight: 800; font-size: 1.1rem; flex: 0 0 auto; }
+.saiba-papeis { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; margin-top: 10px; }
+.saiba-papel { font-size: .82rem; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 8px 10px; }
+.saiba-papel .chip { margin-right: 6px; }
+.saiba-modulos { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-top: 10px; }
+.saiba-mod { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px 12px; }
+.saiba-mod-t { font-weight: 700; font-size: .84rem; color: var(--primary-ink); margin-bottom: 4px; }
+.saiba-mod-fluxo { font-size: .78rem; color: var(--muted); line-height: 1.6; }
+@media (max-width: 640px) {
+  .saiba-diagrama { flex-direction: column; }
+  .saiba-seta { transform: rotate(90deg); padding: 2px 0; }
+}
+
 /* Aviso de troca de contrato (Etapa 2) — faixa temporária no topo, some
    sozinha ou no X; não bloqueia navegação. */
 .contrato-aviso {
