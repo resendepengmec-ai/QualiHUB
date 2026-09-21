@@ -102,3 +102,41 @@
     return el ? (el.value || null) : null;
   }
 
+  // ── Etapa 2 — aviso de troca de contrato + "formulário sujo" ───────
+  // Qualquer campo preenchido em #view ou dentro do #modal marca a tela como
+  // "com dados não salvos" (exceto o próprio seletor de contrato, na
+  // appbar). O reset acontece em dois pontos que cobrem tanto navegação
+  // quanto salvar-e-re-renderizar sem precisar tocar em cada módulo:
+  // (1) sempre que #view é substituído por inteiro (MutationObserver —
+  // pega tanto irPara() quanto um handler de "salvo" que re-renderiza a
+  // aba direto); (2) ao fechar o modal (closeModal), coberto abaixo.
+  window._formSujo = false;
+  document.addEventListener('input', (e) => {
+    const el = e.target;
+    if (!(el.matches('input,textarea,select'))) return;
+    if (el.closest('.appbar')) return; // seletor de contrato não conta
+    if (el.disabled) return;
+    if (el.closest('#view') || el.closest('#modal')) window._formSujo = true;
+  }, true);
+  new MutationObserver(() => { window._formSujo = false; }).observe(view, { childList: true });
+
+  const _closeModalOriginal = closeModal;
+  closeModal = function () { window._formSujo = false; _closeModalOriginal(); };
+
+  // Banner temporário (fecha sozinho ou no X) avisando a troca de contrato,
+  // com destaque visual breve no próprio seletor — sem bloquear navegação.
+  function avisarTrocaContrato(c) {
+    document.querySelectorAll('.contrato-aviso').forEach(el => el.remove());
+    const ests = estabelecimentosDoContrato(c.id);
+    const nomeEst = ests.length ? (ests.length <= 2 ? ests.map(e => e.nome).join(', ') : `${ests.length} estabelecimentos`) : 'sem estabelecimento vinculado';
+    const box = document.createElement('div');
+    box.className = 'contrato-aviso';
+    box.innerHTML = `<span>Contrato alterado para <strong>${esc(c.numero)}</strong> — ${esc(nomeEst)}. O que você vê e lança agora pertence a este contrato.</span>
+      <button type="button" aria-label="Fechar aviso">×</button>`;
+    box.querySelector('button').onclick = () => box.remove();
+    document.body.appendChild(box);
+    setTimeout(() => box.remove(), 6000);
+    const selWrap = document.querySelector('.contrato-select');
+    if (selWrap) { selWrap.classList.add('destaque'); setTimeout(() => selWrap.classList.remove('destaque'), 1200); }
+  }
+

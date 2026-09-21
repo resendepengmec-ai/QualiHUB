@@ -31,7 +31,20 @@
         `<option value="${c.id}">${esc(c.numero)}${c.objeto ? ' — ' + esc(c.objeto) : ''}</option>`).join('');
       sel.value = atual;
     }
-    sel.onchange = () => { setContratoAtual(sel.value); irPara(active); };
+    sel.onchange = () => {
+      const novoId = sel.value;
+      // Etapa 2: formulário com dados não salvos pede confirmação antes de
+      // trocar (o seletor volta ao contrato anterior se o usuário cancelar).
+      if (window._formSujo && !confirm('Você tem dados não salvos nesta tela. Trocar de contrato agora vai descartá-los. Continuar mesmo assim?')) {
+        sel.value = getContratoAtual();
+        return;
+      }
+      window._formSujo = false;
+      setContratoAtual(novoId);
+      const c = contratos.find(x => x.id === novoId);
+      if (c) avisarTrocaContrato(c);
+      irPara(active);
+    };
   }
 
   // ── navegação (sem barra de abas; hub + botão Início) ──────────
