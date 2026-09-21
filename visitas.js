@@ -33,9 +33,10 @@
       </div>
       ${!d.periodicidadeVisita ? `<p class="muted" style="font-size:.8rem;margin-top:10px">Defina a periodicidade em Cadastro → Contratos (Editar) para habilitar o alerta.</p>` : ''}
     </div>`;
+    const multiEst = estabelecimentosDoContrato(cid).length > 1;
     const lista = d.visitas.length ? d.visitas.map(v => `<div class="card" style="box-shadow:none;border:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:10px">
         <div><strong>${fmtDate(v.data)}</strong>${v.observacoes ? ` <span class="muted" style="font-size:.85rem">— ${esc(v.observacoes)}</span>` : ''}
-          <div class="muted" style="font-size:.78rem;margin-top:2px">Registrada por ${esc(v.criadoPorNome || v.criadoPor)}</div></div>
+          <div class="muted" style="font-size:.78rem;margin-top:2px">${multiEst ? esc(nomeEstabelecimento(cid, v.estabelecimentoId) || 'Sem estabelecimento') + ' · ' : ''}Registrada por ${esc(v.criadoPorNome || v.criadoPor)}</div></div>
         ${podeExcluir ? `<button class="btn sm danger" data-del="${v.id}">Excluir</button>` : ''}
       </div>`).join('') : `<div class="empty"><strong>Nenhuma visita registrada</strong>Registre a primeira visita técnica a este estabelecimento.</div>`;
     body.innerHTML = resumo + `<div class="eyebrow" style="margin:18px 0 8px">Histórico</div>` + lista;
@@ -50,11 +51,12 @@
     openModal(`<h2>Registrar visita</h2>
       <label class="field"><span>Data da visita</span><input type="date" id="vData" value="${new Date().toISOString().slice(0, 10)}"></label>
       <label class="field"><span>Observações (opcional)</span><textarea id="vObs" placeholder="O que foi verificado, pendências, etc."></textarea></label>
+      ${campoEstabelecimento(cid, null, 'vEst')}
       <div class="actions"><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="vOk">Registrar</button></div>`);
     $('#vOk').onclick = async () => {
       const data = $('#vData').value; if (!data) return toast('Informe a data.', true);
       $('#vOk').disabled = true;
-      try { await DB.registrarVisita(cid, { data, observacoes: $('#vObs').value.trim() }); closeModal(); toast('Visita registrada.'); carregarVisitas(cid); }
+      try { await DB.registrarVisita(cid, { data, observacoes: $('#vObs').value.trim(), estabelecimentoId: lerEstabelecimento('vEst') }); closeModal(); toast('Visita registrada.'); carregarVisitas(cid); }
       catch (e) { toast(e.message, true); $('#vOk').disabled = false; }
     };
   }

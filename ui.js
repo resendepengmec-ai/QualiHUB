@@ -70,3 +70,35 @@
     return getCurrentUser().role === 'admin'; // administrador de cliente
   }
 
+  // ── Estabelecimentos do contrato (Etapa 1 — contrato 1:N) ──────────
+  // Lê do `contratos` já carregado (cada contrato traz `estabelecimentos:
+  // [{id,nome,...}]`, ver GET /contratos) — sem chamada extra à API.
+  function estabelecimentosDoContrato(contratoId) {
+    const c = (typeof contratos !== 'undefined' ? contratos : []).find(x => x.id === contratoId);
+    return (c && c.estabelecimentos) || [];
+  }
+  function nomeEstabelecimento(contratoId, estId) {
+    if (!estId) return null;
+    const e = estabelecimentosDoContrato(contratoId).find(x => x.id === estId);
+    return e ? e.nome : null;
+  }
+  // Campo de estabelecimento de um formulário: nada (string vazia) se o
+  // contrato não tem nenhum estabelecimento; campo fixo (só leitura) se tem
+  // exatamente 1 (não faz sentido perguntar); <select> se tem 2+.
+  function campoEstabelecimento(contratoId, selecionadoId, idAttr) {
+    const ests = estabelecimentosDoContrato(contratoId);
+    if (!ests.length) return '';
+    if (ests.length === 1) {
+      return `<input type="hidden" id="${idAttr}" value="${esc(ests[0].id)}">
+        <label class="field"><span>Estabelecimento</span><input value="${esc(ests[0].nome)}" disabled></label>`;
+    }
+    return `<label class="field"><span>Estabelecimento</span><select id="${idAttr}">
+      <option value="">— selecione —</option>
+      ${ests.map(e => `<option value="${esc(e.id)}" ${selecionadoId === e.id ? 'selected' : ''}>${esc(e.nome)}</option>`).join('')}
+    </select></label>`;
+  }
+  function lerEstabelecimento(idAttr, root) {
+    const el = (root || document).querySelector('#' + idAttr);
+    return el ? (el.value || null) : null;
+  }
+

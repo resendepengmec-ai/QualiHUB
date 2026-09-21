@@ -28,6 +28,10 @@ const CHECKS = [
   // dataUrl vindo do servidor, reaproveitado da miniatura) — precisa de
   // esc() antes de virar innerHTML de novo, senão reabre o mesmo XSS.
   { file: 'ui.js',          pattern: /src="\$\{(?!esc\()src\}/ },
+  // dashboard.js: foto do estabelecimento no card de contexto (achado 12 da
+  // auditoria de fluxo — estava sem esc(), mesma classe de XSS já corrigida
+  // nos outros módulos).
+  { file: 'dashboard.js',   pattern: /src="\$\{(?!esc\()cAtual\.estabelecimentoFoto\}/ },
 ];
 
 let pass = 0, fail = 0;

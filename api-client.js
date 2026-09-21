@@ -181,14 +181,15 @@ const DB = {
   me:                 ()      => API.get('/auth/me'),
   setClientId:        (id)    => API.post('/auth/config/client-id', { clientId: id }),
 
-  // Estabelecimentos
-  getEstabelecimentos:()      => API.get('/estabelecimentos'),
+  // Estabelecimentos (Etapa 1 — contrato 1:N: opts = {contrato} ou {semContrato:true})
+  getEstabelecimentos:(opts)  => { const p = new URLSearchParams(); if (opts?.contrato) p.set('contrato', opts.contrato); if (opts?.semContrato) p.set('semContrato', '1'); const qs = p.toString(); return API.get('/estabelecimentos' + (qs ? '?' + qs : '')); },
   saveEstabelecimento:(e)     => API.post('/estabelecimentos', { estabelecimento: e }),
+  removeEstabelecimento:(id)  => API.delete(`/estabelecimentos/${id}`),
 
   // Contratos
   getContratos:       ()      => API.get('/contratos'),
   getContrato:        (id)    => API.get(`/contratos/${id}`),
-  saveContrato:       (c)     => API.post('/contratos', { contrato: c }),
+  saveContrato:       (c, estabelecimentoInicial) => API.post('/contratos', { contrato: c, estabelecimentoInicial }),
   deleteContrato:     (id)    => API.delete(`/contratos/${id}`),
 
   // Acessos (whitelist do contrato)

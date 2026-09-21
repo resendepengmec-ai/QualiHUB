@@ -21,12 +21,20 @@
     const u = getCurrentUser() || {};
     const p = isMaster() ? 'Master' : (papelAtual() ? papelAtual().charAt(0).toUpperCase() + papelAtual().slice(1) : (u.role === 'admin' ? 'Administrador' : 'Usuário'));
     const cAtual = (typeof contratos !== 'undefined' ? contratos : []).find(c => c.id === getContratoAtual());
+    // Achado 12 da auditoria de fluxo: estabelecimentoFoto vinha do SERVIDOR
+    // (foto de um estabelecimento salvo por outro dispositivo) e era jogada
+    // em src="${...}" SEM esc() — o backend só valida TAMANHO/formato da
+    // foto, não o conteúdo do resto do JSON; sem esc(), um dataUrl malicioso
+    // quebraria o atributo e executaria script (mesmo padrão já corrigido em
+    // ocorrencias/pac/cadastro/empresa/documentos).
+    const ests = cAtual ? estabelecimentosDoContrato(cAtual.id) : [];
+    const nomesEst = ests.length ? (ests.length <= 2 ? ests.map(e => e.nome).join(', ') : `${ests.length} estabelecimentos`) : 'Sem estabelecimento vinculado';
     const ctxCard = cAtual ? `<div class="card ctxcard">
-      ${cAtual.estabelecimentoFoto ? `<img src="${cAtual.estabelecimentoFoto}" class="ctxfoto" alt="">` : `<div class="ctxfoto ctxph">${_ICONE.building}</div>`}
+      ${cAtual.estabelecimentoFoto ? `<img src="${esc(cAtual.estabelecimentoFoto)}" class="ctxfoto" alt="">` : `<div class="ctxfoto ctxph">${_ICONE.building}</div>`}
       <div style="min-width:0">
         <div class="eyebrow" style="margin:0 0 1px">Contrato selecionado</div>
         <div class="ctxnum">${esc(cAtual.numero || '')}</div>
-        <div class="muted" style="font-size:.84rem">${esc(cAtual.estabelecimentoNome || 'Sem estabelecimento vinculado')}</div>
+        <div class="muted" style="font-size:.84rem">${esc(nomesEst)}</div>
         ${cAtual.objeto ? `<div class="muted" style="font-size:.84rem">${esc(cAtual.objeto)}</div>` : ''}
       </div>
     </div>` : '';

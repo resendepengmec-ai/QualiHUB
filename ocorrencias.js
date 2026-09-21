@@ -40,7 +40,7 @@
       <p style="margin:8px 0 6px;font-weight:600">${esc(o.descricao || '')}</p>
       ${o.acaoCorretiva ? `<div style="font-size:.85rem;margin:0 0 6px"><span class="muted">Ação corretiva:</span> ${esc(o.acaoCorretiva)}</div>` : ''}
       <div class="muted" style="font-size:.8rem">
-        Prazo: <strong>${fmtDate(o.prazoCorrecao)}</strong>
+        ${estabelecimentosDoContrato(o.contratoId).length > 1 ? 'Estabelecimento: <strong>' + esc(nomeEstabelecimento(o.contratoId, o.estabelecimentoId) || '—') + '</strong> · ' : ''}Prazo: <strong>${fmtDate(o.prazoCorrecao)}</strong>
         · Criada por ${esc(o.criadoPorNome || o.criadoPor || '?')}
         · Atribuída a ${esc(o.atribuidoA || '—')}${o.editadoEm ? ' · editada por ' + esc(o.editadoPor || '') : ''}
       </div>
@@ -86,12 +86,13 @@
     } catch (e) { body.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
   }
 
-  function _camposOcorrencia(oc, membros) {
+  function _camposOcorrencia(cid, oc, membros) {
     return `<div class="row">
         <label class="field"><span>Gravidade</span>
           <select id="fGrav">${GRAVIDADES.map(g => `<option value="${g}" ${oc && (oc.gravidade || '').toLowerCase() === g ? 'selected' : ''}>${g[0].toUpperCase() + g.slice(1)}</option>`).join('')}</select></label>
         <label class="field"><span>Prazo para correção</span><input type="date" id="fPrazo" value="${oc ? (oc.prazoCorrecao || '') : ''}"></label>
       </div>
+      ${campoEstabelecimento(cid, oc ? (oc.estabelecimentoId || null) : null, 'fEst')}
       <label class="field"><span>Descrição da não conformidade</span>
         <textarea id="fDesc" placeholder="O que foi observado, onde, e por quê é uma não conformidade">${oc ? esc(oc.descricao || '') : ''}</textarea></label>
       <label class="field"><span>Ação corretiva (o que deve ser feito)</span>
@@ -116,7 +117,8 @@
     const desc = q('#fDesc').value.trim();
     if (!desc) { toast('Descreva a não conformidade.', true); return null; }
     const p = { contratoId: cid, gravidade: q('#fGrav').value, prazoCorrecao: q('#fPrazo').value || null,
-      descricao: desc, acaoCorretiva: q('#fAcao').value.trim() || null, atribuidoA: q('#fAtrib').value || null };
+      descricao: desc, acaoCorretiva: q('#fAcao').value.trim() || null, atribuidoA: q('#fAtrib').value || null,
+      estabelecimentoId: lerEstabelecimento('fEst', root) };
     if (oc) { p.id = oc.id; if (sempreFotos || fotos.length) p.fotos = fotos; } else p.fotos = fotos;
     return p;
   }
@@ -125,7 +127,7 @@
     const cid = getContratoAtual(); const body = $('#ocBody');
     if (!cid) return body.innerHTML = `<div class="empty"><strong>Escolha um contrato</strong>Selecione o contrato onde observou a ocorrência.</div>`;
     const membros = (await getMembros(cid)).filter(m => m.email.toLowerCase() !== getCurrentUser().email.toLowerCase());
-    body.innerHTML = `<div class="card">${_camposOcorrencia(null, membros)}
+    body.innerHTML = `<div class="card">${_camposOcorrencia(cid, null, membros)}
       <div style="margin-top:8px"><button class="btn primary" id="fSalvar">Registrar ocorrência</button></div></div>`;
     pedirLocalizacao();
     let fotos = []; _wireFotos(fotos);
@@ -144,7 +146,7 @@
     const membros = await getMembros(oc.contratoId);
     let manter = (oc.fotos || []).slice();
     let novas = [];
-    openModal(`<div class="eyebrow">Editar</div><h2>Ocorrência</h2>${_camposOcorrencia(oc, membros)}
+    openModal(`<div class="eyebrow">Editar</div><h2>Ocorrência</h2>${_camposOcorrencia(oc.contratoId, oc, membros)}
       <div class="actions"><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="fSalvar">Salvar</button></div>`);
     const modal = $('#modal'); const q = (sel) => modal.querySelector(sel);
     pedirLocalizacao();

@@ -19,26 +19,50 @@
     ({ contratos: cadContratos, estabelecimentos: cadEstabelecimentos, acessos: cadAcessos, equipamentos: cadEquipamentos }[cadSub])();
   }
 
+  // Restrito ao contrato selecionado na barra superior (Etapa 1 — um
+  // estabelecimento pertence a exatamente um contrato). Quem é dono do
+  // contrato também vê os estabelecimentos LEGADOS (sem contrato, dos
+  // tempos em que um estabelecimento não era vinculado a nenhum contrato)
+  // pra poder vincular manualmente — uma vez vinculado, não muda mais.
   async function cadEstabelecimentos() {
-    const body = $('#cadBody'); body.innerHTML = '<p class="muted">Carregando…</p>';
-    const ests = await DB.getEstabelecimentos();
+    const cid = getContratoAtual(); const body = $('#cadBody');
+    if (!cid) return body.innerHTML = `<div class="empty"><strong>Escolha um contrato</strong>Selecione um contrato acima para ver os estabelecimentos.</div>`;
+    body.innerHTML = '<p class="muted">Carregando…</p>';
+    let ests;
+    try { ests = await DB.getEstabelecimentos({ contrato: cid }); } catch (e) { return body.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+    const c = contratos.find(x => x.id === cid);
     const meEmail = (getCurrentUser().email || '').toLowerCase();
-    const podeEditar = (e) => isMaster() || (e.ownerEmail || '').toLowerCase() === meEmail;
-    body.innerHTML = `<div style="margin-bottom:14px"><button class="btn primary" id="novoEst">Novo estabelecimento</button></div>
+    const souDono = isMaster() || ((c && c.ownerEmail || '').toLowerCase() === meEmail);
+    let legados = [];
+    if (souDono) { try { legados = await DB.getEstabelecimentos({ semContrato: true }); } catch (e) {} }
+    body.innerHTML = `
+      ${souDono ? `<div style="margin-bottom:14px"><button class="btn primary" id="novoEst">Novo estabelecimento</button></div>` : ''}
       ${ests.length ? ests.map(e => `<div class="card">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
           <div><strong>${esc(e.nome)}</strong>
             <div class="muted" style="font-size:.82rem">${esc(e.cnpj || '')}${e.endereco ? ' · ' + esc(e.endereco) : ''}</div>
             ${(e.lat != null && e.lng != null) ? `<div class="muted" style="font-size:.8rem;margin-top:2px">📍 ${e.lat}, ${e.lng} · <a href="https://www.google.com/maps?q=${e.lat},${e.lng}" target="_blank" rel="noopener">ver no mapa</a></div>` : ''}
           </div>
-          ${podeEditar(e) ? `<button class="btn sm" data-edit="${e.id}">Editar</button>` : ''}
+          ${souDono ? `<button class="btn sm" data-edit="${e.id}">Editar</button>` : ''}
         </div></div>`).join('')
-        : `<div class="empty"><strong>Nenhum estabelecimento</strong>Cadastre o estabelecimento detentor do contrato.</div>`}`;
-    $('#novoEst').onclick = () => abrirEstModal(null);
-    body.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => abrirEstModal(ests.find(x => x.id === b.dataset.edit)));
+        : `<div class="empty"><strong>Nenhum estabelecimento</strong>${souDono ? 'Cadastre o(s) estabelecimento(s) deste contrato.' : 'Este contrato ainda não tem estabelecimento cadastrado.'}</div>`}
+      ${legados.length ? `<div class="eyebrow" style="margin:20px 0 8px">Estabelecimentos sem contrato (seus, legados)</div>
+        ${legados.map(e => `<div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+            <strong>${esc(e.nome)}</strong>
+            <button class="btn sm" data-vincular="${e.id}">Vincular a este contrato</button>
+          </div></div>`).join('')}` : ''}`;
+    if (!souDono) return;
+    $('#novoEst').onclick = () => abrirEstModal(cid, null);
+    body.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => abrirEstModal(cid, ests.find(x => x.id === b.dataset.edit)));
+    body.querySelectorAll('[data-vincular]').forEach(b => b.onclick = async () => {
+      if (!confirm('Vincular este estabelecimento a este contrato? Depois de vinculado, ele não pode ser transferido para outro contrato.')) return;
+      try { await DB.saveEstabelecimento({ id: b.dataset.vincular, contratoId: cid }); toast('Estabelecimento vinculado.'); cadEstabelecimentos(); }
+      catch (e) { toast(e.message, true); }
+    });
   }
 
-  function abrirEstModal(e) {
+  function abrirEstModal(cid, e) {
     const ed = !!e;
     const coord = (ed && e.lat != null && e.lng != null) ? `${e.lat}, ${e.lng}` : '';
     openModal(`<h2>${ed ? 'Editar' : 'Novo'} estabelecimento</h2>
@@ -68,7 +92,7 @@
         lat = p[0]; lng = p[1];
       }
       const payload = { nome, cnpj: $('#eCnpj').value.trim(), endereco: $('#eEnd').value.trim(), lat, lng, foto };
-      if (ed) payload.id = e.id;
+      if (ed) payload.id = e.id; else payload.contratoId = cid;
       try { await DB.saveEstabelecimento(payload); closeModal(); toast('Estabelecimento salvo.'); cadEstabelecimentos(); }
       catch (err) { toast(err.message, true); }
     };
@@ -76,7 +100,6 @@
 
   async function cadContratos() {
     const body = $('#cadBody'); body.innerHTML = '<p class="muted">Carregando…</p>';
-    const ests = await DB.getEstabelecimentos().catch(() => []);
     const podeEditar = (c) => isMaster() || papelNoContrato(c.id) === 'administrador';
     body.innerHTML = `<div style="margin-bottom:14px"><button class="btn primary" id="novoCtr">Novo contrato</button></div>
       ${contratos.length ? contratos.map(c => `<div class="card">
@@ -87,23 +110,25 @@
             ${podeEditar(c) ? `<button class="btn sm" data-edit="${c.id}">Editar</button>` : ''}
           </div></div></div>`).join('')
         : `<div class="empty"><strong>Nenhum contrato</strong>Crie o primeiro contrato para começar.</div>`}`;
-    $('#novoCtr').onclick = () => abrirContratoModal(null, ests);
-    body.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => abrirContratoModal(contratos.find(x => x.id === b.dataset.edit), ests));
+    $('#novoCtr').onclick = () => abrirContratoModal(null);
+    body.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => abrirContratoModal(contratos.find(x => x.id === b.dataset.edit)));
   }
 
-  function abrirContratoModal(c, ests) {
+  function abrirContratoModal(c) {
     const ed = !!c;
+    // Estabelecimento não faz mais parte do formulário de contrato (Etapa 1
+    // — um contrato tem 1+ estabelecimentos, geridos em Cadastro →
+    // Estabelecimentos). Na criação, aceita opcionalmente o primeiro
+    // estabelecimento; na edição, só mostra a lista (somente leitura).
+    const estabRO = (ed && c.estabelecimentos && c.estabelecimentos.length)
+      ? `<div class="field"><span style="display:block;font-size:.8rem;font-weight:600;margin-bottom:6px">Estabelecimentos deste contrato</span>
+          <div class="muted" style="font-size:.85rem">${c.estabelecimentos.map(e => esc(e.nome)).join(', ')}</div>
+          <p class="muted" style="font-size:.74rem;margin:4px 0 0">Editar/adicionar em Cadastro → Estabelecimentos.</p></div>`
+      : '';
     openModal(`<h2>${ed ? 'Editar' : 'Novo'} contrato</h2>
-      <div class="row"><label class="field"><span>Número</span><input id="cNum" value="${ed ? esc(c.numero) : ''}"></label>
-        <label class="field"><span>Estabelecimento</span><select id="cEst">
-          <option value="">— nenhum —</option>
-          ${ests.map(e => `<option value="${e.id}" ${ed && c.estabelecimentoId === e.id ? 'selected' : ''}>${esc(e.nome)}</option>`).join('')}
-          <option value="__novo__">+ Novo estabelecimento…</option>
-        </select></label></div>
-      <div id="cEstNovoWrap" style="display:none">
-        <div class="row"><label class="field"><span>Nome do estabelecimento</span><input id="cEstNome"></label>
-          <label class="field"><span>CNPJ (opcional)</span><input id="cEstCnpj"></label></div>
-      </div>
+      <label class="field"><span>Número</span><input id="cNum" value="${ed ? esc(c.numero) : ''}"></label>
+      ${!ed ? `<div class="row"><label class="field"><span>Primeiro estabelecimento (opcional)</span><input id="cEstNome" placeholder="Nome"></label>
+        <label class="field"><span>CNPJ (opcional)</span><input id="cEstCnpj"></label></div>` : estabRO}
       <label class="field"><span>Objeto do contrato</span><input id="cObj" value="${ed ? esc(c.objeto || '') : ''}"></label>
       <label class="field"><span>Classificação (tipo de estabelecimento)</span>
         <select id="cClass"><option value="">— selecione —</option>
@@ -128,28 +153,25 @@
       </div>
       <span class="muted" style="font-size:.75rem;display:block;margin-top:-6px">Alimenta o alerta de agenda no módulo Visitas.</span>
       <div class="actions"><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="cOk">Salvar</button></div>`);
-    $('#cEst').onchange = () => { $('#cEstNovoWrap').style.display = $('#cEst').value === '__novo__' ? 'block' : 'none'; };
     $('#cPeriodTipo').onchange = () => { $('#cPeriodVezesWrap').style.display = $('#cPeriodTipo').value === 'personalizada' ? 'block' : 'none'; };
     $('#cOk').onclick = async () => {
       const numero = $('#cNum').value.trim(); if (!numero) return toast('Informe o número.', true);
       try {
-        let estId = $('#cEst').value;
-        if (estId === '__novo__') {
-          const nome = $('#cEstNome').value.trim();
-          if (!nome) return toast('Informe o nome do novo estabelecimento.', true);
-          const r = await DB.saveEstabelecimento({ nome, cnpj: $('#cEstCnpj').value.trim() });
-          estId = r.saved;
-        }
         const periodTipo = $('#cPeriodTipo').value;
         if (periodTipo === 'personalizada' && !$('#cPeriodVezes').value) return toast('Informe quantas vezes por semana.', true);
-        const payload = { numero, estabelecimentoId: estId || null, objeto: $('#cObj').value.trim(),
+        const payload = { numero, objeto: $('#cObj').value.trim(),
           vigenciaInicio: $('#cIni').value || null, vigenciaFim: $('#cFim').value || null,
           classificacao: $('#cClass').value || null,
           rt: { nome: $('#cRtNome').value.trim(), conselho: $('#cRtConselho').value.trim() },
           regimes: [...document.querySelectorAll('.cReg:checked')].map(x => x.value),
           periodicidadeVisita: periodTipo ? { tipo: periodTipo, vezesPorSemana: periodTipo === 'personalizada' ? Number($('#cPeriodVezes').value) : undefined } : null };
         if (ed) payload.id = c.id;
-        await DB.saveContrato(payload);
+        let estabelecimentoInicial;
+        if (!ed) {
+          const nomeEst = $('#cEstNome').value.trim();
+          if (nomeEst) estabelecimentoInicial = { nome: nomeEst, cnpj: $('#cEstCnpj').value.trim() };
+        }
+        await DB.saveContrato(payload, estabelecimentoInicial);
         closeModal(); toast('Contrato salvo.'); await refreshMe(); await carregarContratos(); cadContratos();
       } catch (e) { toast(e.message, true); }
     };
@@ -199,7 +221,7 @@
     try { eqs = await DB.getEquipamentos(cid); } catch (e) { return body.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
     body.innerHTML = `<p class="muted" style="font-size:.85rem;margin:0 0 12px">Câmaras, balcões e recintos com seus limites de temperatura e frequência. Definem a conformidade automática e recebem o sensor IoT.</p>
       <div style="margin-bottom:14px"><button class="btn primary" id="novoEq">Novo equipamento</button></div>
-      ${eqs.length ? eqs.map(e => cardEquip(e)).join('') : `<div class="empty"><strong>Nenhum equipamento</strong>Cadastre a primeira câmara/balcão/sala para o controle de temperatura.</div>`}`;
+      ${eqs.length ? eqs.map(e => cardEquip(e, cid)).join('') : `<div class="empty"><strong>Nenhum equipamento</strong>Cadastre a primeira câmara/balcão/sala para o controle de temperatura.</div>`}`;
     $('#novoEq').onclick = () => abrirEquipModal(cid, null);
     body.querySelectorAll('[data-edit-eq]').forEach(b => b.onclick = () => abrirEquipModal(cid, eqs.find(x => x.id === b.dataset.editEq)));
     body.querySelectorAll('[data-del-eq]').forEach(b => b.onclick = async () => {
@@ -216,14 +238,15 @@
     });
   }
 
-  function cardEquip(e) {
+  function cardEquip(e, cid) {
     const faixa = (e.limiteMin != null || e.limiteMax != null) ? `${e.limiteMin ?? '-∞'}°C a ${e.limiteMax ?? '+∞'}°C` : 'sem limite definido';
     const modoLbl = { manual: 'Manual', iot: 'IoT', ambos: 'Manual + IoT' }[e.modo] || e.modo;
     const temIot = e.modo === 'iot' || e.modo === 'ambos';
+    const multiEst = cid && estabelecimentosDoContrato(cid).length > 1;
     return `<div class="card">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
         <div><strong>${esc(e.nome)}</strong> <span class="chip neutral">${esc((CATEGORIAS_EQUIP[e.categoria] || e.categoria))}</span>
-          <div class="muted" style="font-size:.82rem;margin-top:2px">Faixa: ${faixa}${e.freqPorDia ? ' · ' + e.freqPorDia + '×/dia' : ''} · ${modoLbl}</div></div>
+          <div class="muted" style="font-size:.82rem;margin-top:2px">${multiEst ? esc(nomeEstabelecimento(cid, e.estabelecimentoId) || 'Sem estabelecimento') + ' · ' : ''}Faixa: ${faixa}${e.freqPorDia ? ' · ' + e.freqPorDia + '×/dia' : ''} · ${modoLbl}</div></div>
         <div style="display:flex;gap:6px;flex:none">
           <button class="btn sm" data-edit-eq="${e.id}">Editar</button>
           <button class="btn sm danger" data-del-eq="${e.id}">Excluir</button>
@@ -252,12 +275,14 @@
       <div class="row"><label class="field"><span>Frequência (medições por dia)</span><input id="eqFreq" type="number" step="1" value="${ed && e.freqPorDia != null ? e.freqPorDia : ''}" placeholder="Ex.: 3"></label>
         <label class="field"><span>Forma de medição</span><select id="eqModo">${modos}</select></label></div>
       <label class="field"><span>Identificação do sensor (opcional)</span><input id="eqSensor" value="${ed ? esc(e.sensorId || '') : ''}" placeholder="Ex.: ESP32-cam1"></label>
+      ${campoEstabelecimento(cid, ed ? (e.estabelecimentoId || null) : null, 'eqEst')}
       <p class="muted" style="font-size:.76rem;margin-top:-4px">Em modo IoT, um token é gerado ao salvar (aparece no card do equipamento).</p>
       <div class="actions"><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="eqOk">Salvar</button></div>`);
     $('#eqOk').onclick = async () => {
       const nome = $('#eqNome').value.trim(); if (!nome) return toast('Informe o nome.', true);
       const payload = { nome, categoria: $('#eqCat').value, limiteMin: $('#eqMin').value, limiteMax: $('#eqMax').value,
-        freqPorDia: $('#eqFreq').value, modo: $('#eqModo').value, sensorId: $('#eqSensor').value.trim() };
+        freqPorDia: $('#eqFreq').value, modo: $('#eqModo').value, sensorId: $('#eqSensor').value.trim(),
+        estabelecimentoId: lerEstabelecimento('eqEst') };
       if (ed) payload.id = e.id;
       try { await DB.saveEquipamento(cid, payload); closeModal(); toast('Equipamento salvo.'); cadEquipamentos(); }
       catch (err) { toast(err.message, true); }

@@ -47,6 +47,7 @@
     try { docs = await DB.getDocumentos(cid); } catch (e) { return body.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
     const rank = { vencida: 0, vencendo: 1, sem_validade: 2, ok: 3 };
     docs = docs.slice().sort((a, b) => rank[a.status] - rank[b.status]);
+    const multiEst = estabelecimentosDoContrato(cid).length > 1;
     body.innerHTML = docs.length ? docs.map(d => `<div class="card${d.status !== 'sem_validade' ? ' spine s-' + d.status : ''}">
         <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start">
           <div><span class="chip ${STATUS_DOC_CHIP[d.status]}">${STATUS_DOC_LABEL[d.status]}</span>
@@ -57,7 +58,7 @@
           </div>` : ''}
         </div>
         <div class="muted" style="font-size:.82rem;margin-top:6px">
-          ${d.numero ? 'Nº ' + esc(d.numero) + ' · ' : ''}${d.orgaoEmissor ? esc(d.orgaoEmissor) + ' · ' : ''}${d.validade ? 'Validade: ' + fmtDate(d.validade) : (d.validadeEfetiva ? 'Vencimento estimado (periodicidade): ' + fmtDate(d.validadeEfetiva) : 'Sem validade definida')}
+          ${multiEst ? esc(nomeEstabelecimento(cid, d.estabelecimentoId) || 'Sem estabelecimento') + ' · ' : ''}${d.numero ? 'Nº ' + esc(d.numero) + ' · ' : ''}${d.orgaoEmissor ? esc(d.orgaoEmissor) + ' · ' : ''}${d.validade ? 'Validade: ' + fmtDate(d.validade) : (d.validadeEfetiva ? 'Vencimento estimado (periodicidade): ' + fmtDate(d.validadeEfetiva) : 'Sem validade definida')}
         </div>
         ${d.observacoes ? `<div style="font-size:.85rem;margin-top:6px">${esc(d.observacoes)}</div>` : ''}
         ${_anexoPreviewHTML(d.arquivo, d.arquivoMime, 90, d.tipoLabel || d.tipo)}
@@ -134,6 +135,7 @@
       <div class="row"><label class="field"><span>Emissão</span><input type="date" id="dEmissao" value="${ed ? (d.dataEmissao || '') : ''}"></label>
         <label class="field"><span>Validade (em branco se não vence)</span><input type="date" id="dValidade" value="${ed ? (d.validade || '') : ''}"></label></div>
       <label class="field"><span>Observações</span><textarea id="dObs">${ed ? esc(d.observacoes || '') : ''}</textarea></label>
+      ${campoEstabelecimento(cid, ed ? (d.estabelecimentoId || null) : null, 'dEst')}
       <label class="field"><span>Anexo (opcional — foto, scan ou PDF do documento)</span><input type="file" id="dArquivo" accept="image/*,application/pdf"></label>
       <div id="dArquivoPrev">${_anexoPreviewHTML(ed ? d.arquivo : null, ed ? d.arquivoMime : null, 80, ed ? (d.tipoLabel || d.tipo) : null)}</div>
       <div id="dIaWrap" style="display:none;margin:4px 0 14px">
@@ -186,6 +188,7 @@
         numero: $('#dNumero').value.trim(), orgaoEmissor: $('#dOrgao').value.trim(),
         dataEmissao: $('#dEmissao').value || null, validade: $('#dValidade').value || null,
         observacoes: $('#dObs').value.trim(), arquivo, arquivoMime,
+        estabelecimentoId: lerEstabelecimento('dEst'),
       };
       if (ed) payload.id = d.id;
       $('#dOk').disabled = true;

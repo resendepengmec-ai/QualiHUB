@@ -24,20 +24,30 @@
 
   // ── Relatório PDF (por período / contrato / estabelecimento) ────
   function abrirRelatorioModal() {
-    const estMap = {};
-    contratos.forEach(c => { if (c.estabelecimentoId) estMap[c.estabelecimentoId] = c.estabelecimentoNome || c.estabelecimentoId; });
-    const estOpts = Object.entries(estMap).map(([id, nome]) => `<option value="${id}">${esc(nome)}</option>`).join('');
+    // Etapa 1 — o filtro de estabelecimento segue o CONTRATO escolhido aqui
+    // no próprio modal (antes era uma lista fixa de todos os
+    // estabelecimentos do usuário, sem relação com o contrato selecionado).
+    const estOptsPara = (cid) => {
+      let ests = [];
+      if (cid) ests = estabelecimentosDoContrato(cid);
+      else contratos.forEach(c => { ests = ests.concat(estabelecimentosDoContrato(c.id)); });
+      return ests.map(e => `<option value="${esc(e.id)}">${esc(e.nome)}</option>`).join('');
+    };
     openModal(`<div class="eyebrow">Ocorrências</div><h2>Gerar PDF</h2>
       <label class="field"><span>Contrato</span><select id="rContrato">
         <option value="">Todos os meus contratos</option>
         ${contratos.map(c => `<option value="${c.id}">${esc(c.numero)}${c.objeto ? ' — ' + esc(c.objeto) : ''}</option>`).join('')}</select></label>
-      <label class="field"><span>Estabelecimento</span><select id="rEst"><option value="">Todos</option>${estOpts}</select></label>
+      <label class="field" id="rEstWrap"><span>Estabelecimento</span><select id="rEst"><option value="">Todos</option>${estOptsPara(null)}</select></label>
       <label class="field" style="display:none"><span>Ou pelo período de uma visita</span><select id="rVisita"></select></label>
       <div class="row"><label class="field"><span>De</span><input type="date" id="rFrom"></label>
         <label class="field"><span>Até</span><input type="date" id="rTo"></label></div>
       <p class="muted" style="font-size:.78rem">Se escolher um contrato, o filtro de estabelecimento é ignorado. Sem datas, entram todas as ocorrências.</p>
       <div class="actions"><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="rGerar">Gerar</button></div>`);
-    $('#rContrato').onchange = () => _wireFiltroVisita($('#rContrato').value, 'rVisita', 'rFrom', 'rTo');
+    $('#rContrato').onchange = () => {
+      _wireFiltroVisita($('#rContrato').value, 'rVisita', 'rFrom', 'rTo');
+      $('#rEst').innerHTML = '<option value="">Todos</option>' + estOptsPara($('#rContrato').value);
+      $('#rEstWrap').style.display = $('#rContrato').value ? 'none' : '';
+    };
     $('#rGerar').onclick = async () => {
       const p = new URLSearchParams();
       if ($('#rContrato').value) p.set('contrato', $('#rContrato').value);
