@@ -61,7 +61,7 @@
           ${multiEst ? esc(nomeEstabelecimento(cid, d.estabelecimentoId) || 'Sem estabelecimento') + ' · ' : ''}${d.numero ? 'Nº ' + esc(d.numero) + ' · ' : ''}${d.orgaoEmissor ? esc(d.orgaoEmissor) + ' · ' : ''}${d.validade ? 'Validade: ' + fmtDate(d.validade) : (d.validadeEfetiva ? 'Vencimento estimado (periodicidade): ' + fmtDate(d.validadeEfetiva) : 'Sem validade definida')}
         </div>
         ${d.observacoes ? `<div style="font-size:.85rem;margin-top:6px">${esc(d.observacoes)}</div>` : ''}
-        ${_anexoPreviewHTML(d.arquivo, d.arquivoMime, 90, d.tipoLabel || d.tipo)}
+        ${_anexoPreviewHTML(d.arquivo, d.arquivoMime, 90, d.tipoLabel || d.tipo, d.id, d.temArquivo)}
       </div>`).join('')
       : `<div class="empty"><strong>Nenhum documento cadastrado</strong>Cadastre as licenças sanitárias deste contrato para acompanhar o vencimento.</div>`;
     body.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => abrirDocumentoModal(cid, docs.find(x => x.id === b.dataset.edit), podeGerir));
@@ -84,21 +84,29 @@
   // quebraria o atributo src=/href="..." e executaria script na tela de quem
   // abrisse este documento depois (achado e corrigido na auditoria — mesmo
   // padrão de ocorrencias.js/pac.js/cadastro.js/empresa.js).
-  function _anexoPreviewHTML(arquivo, mime, maxH, nomeSugerido) {
-    if (!arquivo) return '';
+  // `arquivo` pode faltar mesmo quando existe um PDF: auditoria de banda
+  // (PERFORMANCE.md, Etapa 1) — a listagem não manda mais o PDF inteiro
+  // (só a imagem, que já é pequena), só `temArquivo`+`documentoId`; o chip
+  // busca o arquivo do servidor sob demanda, só quando o usuário clica
+  // Abrir/Salvar (ver o listener em file-output.js).
+  function _anexoPreviewHTML(arquivo, mime, maxH, nomeSugerido, documentoId, temArquivo) {
+    const ehPdfSemArquivoLocal = !arquivo && temArquivo && mime === 'application/pdf';
+    if (!arquivo && !ehPdfSemArquivoLocal) return '';
     if (mime === 'application/pdf') {
       // Rótulos do catálogo têm "/" (ex.: "Alvará Sanitário / Licença de
       // funcionamento") — sanitiza pra não virar (ou parecer) um caminho no
       // nome do arquivo baixado.
       const base = (nomeSugerido || 'documento').replace(/\.pdf$/i, '').replace(/[\\/:*?"<>|]+/g, '-').trim() || 'documento';
       const nome = `${base}.pdf`;
+      const attrDado = arquivo ? `data-arquivo="${esc(arquivo)}"` : `data-doc-id="${esc(documentoId)}"`;
       return `<div style="margin-top:8px;display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);flex-wrap:wrap">
         <span style="flex:none;display:flex;color:var(--muted)" aria-hidden="true">${_ICONE_PDF}</span>
         <span style="flex:1 1 100px;min-width:0;font-size:.84rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(nome)}">${esc(nome)}</span>
-        <button type="button" class="btn ghost sm" data-pdf-open data-arquivo="${esc(arquivo)}" data-nome="${esc(nome)}">Abrir</button>
-        <button type="button" class="btn ghost sm" data-pdf-save data-arquivo="${esc(arquivo)}" data-nome="${esc(nome)}">Salvar</button>
+        <button type="button" class="btn ghost sm" data-pdf-open ${attrDado} data-nome="${esc(nome)}">Abrir</button>
+        <button type="button" class="btn ghost sm" data-pdf-save ${attrDado} data-nome="${esc(nome)}">Salvar</button>
       </div>`;
     }
+    if (!arquivo) return '';
     return `<div style="margin-top:8px"><img src="${esc(arquivo)}" style="max-height:${maxH}px;border:1px solid var(--line);border-radius:8px;padding:4px;background:#fff"></div>`;
   }
 
@@ -137,14 +145,20 @@
       <label class="field"><span>Observações</span><textarea id="dObs">${ed ? esc(d.observacoes || '') : ''}</textarea></label>
       ${campoEstabelecimento(cid, ed ? (d.estabelecimentoId || null) : null, 'dEst')}
       <label class="field"><span>Anexo (opcional — foto, scan ou PDF do documento)</span><input type="file" id="dArquivo" accept="image/*,application/pdf"></label>
-      <div id="dArquivoPrev">${_anexoPreviewHTML(ed ? d.arquivo : null, ed ? d.arquivoMime : null, 80, ed ? (d.tipoLabel || d.tipo) : null)}</div>
+      <div id="dArquivoPrev">${_anexoPreviewHTML(ed ? d.arquivo : null, ed ? d.arquivoMime : null, 80, ed ? (d.tipoLabel || d.tipo) : null, ed ? d.id : null, ed ? d.temArquivo : false)}</div>
       <div id="dIaWrap" style="display:none;margin:4px 0 14px">
         <button type="button" class="btn ghost sm" id="dIaBtn">✨ Ler documento automaticamente (IA)</button>
         <p class="muted" style="font-size:.74rem;margin:4px 0 0">A leitura é uma sugestão — confira e ajuste os campos antes de salvar. Nada é preenchido sem você confirmar.</p>
         <div id="dIaResultado"></div>
       </div>
       <div class="actions"><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="dOk">Salvar</button></div>`);
-    let arquivo = ed ? (d.arquivo || null) : null;
+    // `undefined` (distinto de `null`) é "existe um anexo, mas não foi
+    // carregado localmente — não mexa nele" (PDF de um documento existente,
+    // que a listagem não manda mais inteiro, ver PERFORMANCE.md Etapa 1).
+    // Salvar sem tocar no arquivo tem que OMITIR arquivo/arquivoMime do
+    // payload (não mandar null), senão apagaria o anexo existente ao editar
+    // só outro campo.
+    let arquivo = ed ? (d.arquivo !== undefined ? d.arquivo : (d.temArquivo ? undefined : null)) : null;
     let arquivoMime = ed ? (d.arquivoMime || null) : null;
     $('#dTipo').onchange = () => { $('#dTipoOutroWrap').style.display = $('#dTipo').value === 'outro' ? 'block' : 'none'; };
     $('#dArquivo').onchange = async (e) => {
@@ -160,6 +174,12 @@
       } catch (err) { toast(err.message, true); }
     };
     $('#dIaBtn').onclick = async () => {
+      if (arquivo === undefined) {
+        // Anexo existente (PDF) ainda não carregado localmente — busca antes de analisar.
+        $('#dIaBtn').disabled = true; $('#dIaBtn').textContent = 'Carregando anexo…';
+        try { const r = await DB.getArquivoDocumento(d.id); arquivo = r.arquivo; arquivoMime = r.arquivoMime; }
+        catch (err) { toast(err.message, true); $('#dIaBtn').disabled = false; $('#dIaBtn').textContent = '✨ Ler documento automaticamente (IA)'; return; }
+      }
       if (!arquivo) return;
       $('#dIaBtn').disabled = true; $('#dIaBtn').textContent = 'Lendo…';
       $('#dIaResultado').innerHTML = '';
@@ -187,15 +207,20 @@
         tipo, tipoLabel: tipo === 'outro' ? $('#dTipoOutro').value.trim() : undefined,
         numero: $('#dNumero').value.trim(), orgaoEmissor: $('#dOrgao').value.trim(),
         dataEmissao: $('#dEmissao').value || null, validade: $('#dValidade').value || null,
-        observacoes: $('#dObs').value.trim(), arquivo, arquivoMime,
+        observacoes: $('#dObs').value.trim(),
         estabelecimentoId: lerEstabelecimento('dEst'),
       };
+      // Só manda arquivo/arquivoMime se souber o valor de verdade — omitir
+      // (não mandar `null`) quando o anexo existente não foi tocado, senão
+      // o backend apagaria o anexo ao salvar outro campo (ver comentário
+      // acima, na declaração de `arquivo`).
+      if (arquivo !== undefined) { payload.arquivo = arquivo; payload.arquivoMime = arquivoMime; }
       if (ed) payload.id = d.id;
       $('#dOk').disabled = true;
       try { await DB.saveDocumento(cid, payload); closeModal(); toast('Documento salvo.'); carregarChecklist(cid); carregarDocumentos(cid, podeGerir); }
       catch (err) { toast(err.message, true); $('#dOk').disabled = false; }
     };
-    if (arquivo) $('#dIaWrap').style.display = 'block';
+    if (arquivo || (ed && d.temArquivo)) $('#dIaWrap').style.display = 'block';
   }
 
   // Painel de revisão da sugestão da IA — nunca aplica nada sozinho; só

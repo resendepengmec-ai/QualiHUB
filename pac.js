@@ -103,7 +103,7 @@
         } else {
           corpo = tipo.campos.map(c => (rg.dados && rg.dados[c.key] != null && rg.dados[c.key] !== '') ? `${esc(c.label)}: <b>${esc(rg.dados[c.key])}</b>` : null).filter(Boolean).join(' · ') || '<span class="muted">sem dados</span>';
         }
-        const fotos = (rg.fotos || []).map(f => `<img src="${esc(f.dataUrl)}">`).join('');
+        const fotos = _renderFotosImgs(rg.fotos, 'pac', rg.id, 'fotos');
         return `<div class="card" style="box-shadow:none;border:1px solid var(--line)">
           <div style="display:flex;justify-content:space-between;align-items:center">${chip}<span class="muted" style="font-size:.76rem">${rg.criadoEm ? new Date(rg.criadoEm).toLocaleString('pt-BR') : ''}</span></div>
           <div style="font-size:.85rem;margin-top:6px">${corpo}</div>

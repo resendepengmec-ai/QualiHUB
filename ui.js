@@ -53,12 +53,50 @@
     lb.addEventListener('click', _closeLightbox);
     document.body.appendChild(lb);
     lb.focus({ preventScroll: true });
+    return lb;
+  }
+  // Auditoria de banda (PERFORMANCE.md, Etapa 1): quando a miniatura na
+  // lista veio SEM o dataUrl cheio (porque tinha thumbUrl — a listagem só
+  // manda a miniatura), a ampliação busca a foto em tamanho cheio sob
+  // demanda (só ao clicar, nunca antes). Miniatura aparece na hora,
+  // meio-opaca, e é trocada pela foto cheia quando a busca terminar.
+  async function _abrirLightboxComBusca(thumbSrc, buscar) {
+    const lb = _openLightbox(thumbSrc);
+    const img = lb.querySelector('img');
+    img.style.opacity = '.5';
+    try {
+      const full = await buscar();
+      if (full && document.getElementById('_lightbox') === lb) { img.src = full; img.style.opacity = '1'; }
+      else if (document.getElementById('_lightbox') === lb) img.style.opacity = '1';
+    } catch (e) { if (document.getElementById('_lightbox') === lb) img.style.opacity = '1'; }
   }
   document.addEventListener('click', e => {
     const img = e.target.closest('.fotos img');
-    if (img) _openLightbox(img.src);
+    if (!img) return;
+    const { fotoTipo, fotoOwner, fotoIdx, fotoCampo } = img.dataset;
+    if (fotoTipo && fotoOwner != null && fotoIdx != null) {
+      _abrirLightboxComBusca(img.src, async () => {
+        const r = fotoTipo === 'ocorrencia' ? await DB.getFotosOcorrencia(fotoOwner) : await DB.getFotosPac(fotoOwner);
+        return r?.[fotoCampo || 'fotos']?.[Number(fotoIdx)]?.dataUrl || null;
+      });
+    } else {
+      _openLightbox(img.src);
+    }
   });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && document.getElementById('_lightbox')) _closeLightbox(); });
+  // Renderiza um array de fotos (ocorrência/P.A.C.): se a foto já tem
+  // dataUrl (upload local recém-capturado, ou registro legado sem
+  // thumbUrl), mostra ela direto; se só tem thumbUrl (listagem já cortou o
+  // dataUrl cheio, ver PERFORMANCE.md), mostra a miniatura marcada pra
+  // buscar o tamanho cheio sob demanda ao ampliar (ver _abrirLightboxComBusca).
+  function _renderFotosImgs(fotos, tipo, ownerId, campo) {
+    return (fotos || []).map((f, i) => {
+      if (!f) return '';
+      if (f.dataUrl) return `<img src="${esc(f.dataUrl)}" alt="">`;
+      if (f.thumbUrl) return `<img src="${esc(f.thumbUrl)}" alt="" data-foto-tipo="${esc(tipo)}" data-foto-owner="${esc(ownerId)}" data-foto-idx="${i}" data-foto-campo="${esc(campo || 'fotos')}">`;
+      return '';
+    }).join('');
+  }
   const fmtDate = d => d ? new Date(d + (d.length <= 10 ? 'T00:00:00' : '')).toLocaleDateString('pt-BR') : '—';
 
   // Espelha a regra do backend (api.js): só master ou administrador de

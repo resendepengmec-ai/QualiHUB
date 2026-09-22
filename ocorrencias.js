@@ -44,7 +44,7 @@
         · Criada por ${esc(o.criadoPorNome || o.criadoPor || '?')}
         · Atribuída a ${esc(o.atribuidoA || '—')}${o.editadoEm ? ' · editada por ' + esc(o.editadoPor || '') : ''}
       </div>
-      ${Array.isArray(o.fotos) && o.fotos.length ? `<div class="fotos">${o.fotos.map(f => `<img src="${esc(f.dataUrl)}" alt="">`).join('')}</div>` : ''}
+      ${Array.isArray(o.fotos) && o.fotos.length ? `<div class="fotos">${_renderFotosImgs(o.fotos, 'ocorrencia', o.id, 'fotos')}</div>` : ''}
       ${o.execucao ? `<div class="card" style="margin-top:10px;box-shadow:none;background:var(--surface-2)">
         <div class="eyebrow">Execução da correção</div>
         <div style="font-size:.86rem;margin-top:4px">${esc(o.execucao.descricaoExecucao)}</div>

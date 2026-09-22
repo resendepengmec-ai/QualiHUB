@@ -210,6 +210,9 @@ const DB = {
   criarOcorrencia:    (o)     => API.post('/ocorrencias', { ocorrencia: o }),
   iniciarOcorrencia:  (id)    => API.patch(`/ocorrencias/${id}/iniciar`, {}),
   resolverOcorrencia: (id, r) => API.patch(`/ocorrencias/${id}/resolver`, r),
+  // Fotos em tamanho cheio sob demanda (a listagem só traz a miniatura
+  // quando a foto tem thumbUrl — ver PERFORMANCE.md, Etapa 1).
+  getFotosOcorrencia: (id)    => API.get(`/ocorrencias/${id}/fotos`),
 
   // Dashboard
   getStats:           (cid)   => API.get('/stats' + (cid ? `?contrato=${cid}` : '')),
@@ -227,6 +230,7 @@ const DB = {
   getRegistrosPac:        (cid, t)  => API.get(`/contratos/${cid}/pac` + (t ? `?planilha=${t}` : '')),
   criarRegistroPac:       (r)       => API.post('/pac', { registro: r }),
   decidirRegistroPac:     (id, aprovado, observacao) => API.patch(`/pac/${id}/decidir`, { aprovado, observacao }),
+  getFotosPac:            (id)      => API.get(`/pac/${id}/fotos`),
 
   // Equipamentos / controle de temperatura
   getEquipamentos:        (cid)     => API.get(`/contratos/${cid}/equipamentos`),
@@ -240,6 +244,7 @@ const DB = {
   getDocumentosChecklist: (cid)     => API.get(`/contratos/${cid}/documentos-checklist`),
   saveDocumento:          (cid, d)  => API.post(`/contratos/${cid}/documentos`, { documento: d }),
   removeDocumento:        (id)      => API.delete(`/documentos/${id}`),
+  getArquivoDocumento:    (id)      => API.get(`/documentos/${id}/arquivo`),
   lerDocumentoIA:         (cid, arquivo, mimeType) => API.post(`/contratos/${cid}/documentos/ler-ia`, { arquivo, mimeType }),
   getRelatorioDocumentos: (q)       => API.get('/relatorios/documentos' + (q ? `?${q}` : '')),
 
@@ -469,6 +474,21 @@ async function _stampImage(dataUrl, capturedAt, pos) {
 
   try { return c.toDataURL('image/jpeg', 0.85); } catch (e) { return dataUrl; }
 }
+// Miniatura pequena (pra lista/card) a partir da imagem JÁ carimbada — bem
+// menor que o dataUrl cheio (~240KB → ~10-20KB). Auditoria de banda
+// (PERFORMANCE.md, Etapa 1): a listagem de ocorrências/P.A.C. só precisa
+// disto pra mostrar a miniatura; o dataUrl cheio só é buscado do servidor
+// sob demanda, ao ampliar (ver ui.js _openLightbox).
+async function _gerarThumb(dataUrl, maxW) {
+  try {
+    const img = await _loadImg(dataUrl, false);
+    const scale = Math.min(1, (maxW || 240) / img.width);
+    const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    c.getContext('2d').drawImage(img, 0, 0, w, h);
+    return c.toDataURL('image/jpeg', 0.6);
+  } catch (e) { return null; } // sem miniatura: a lista cai no fallback de sempre mostrar o dataUrl cheio
+}
 async function capturarFoto(file) {
   const pos = await _getPos();
   const capturedAt = Date.now();
@@ -478,7 +498,10 @@ async function capturarFoto(file) {
     r.readAsDataURL(file);
   });
   const dataUrl = await _stampImage(raw, capturedAt, pos);
-  return { dataUrl, capturedAt, lat: pos?.lat ?? null, lng: pos?.lng ?? null, nome: file.name };
+  const thumbUrl = await _gerarThumb(dataUrl, 240);
+  const foto = { dataUrl, capturedAt, lat: pos?.lat ?? null, lng: pos?.lng ?? null, nome: file.name };
+  if (thumbUrl) foto.thumbUrl = thumbUrl;
+  return foto;
 }
 // Compatibilidade: chamadas antigas a fileToFoto passam a carimbar também.
 const fileToFoto = capturarFoto;

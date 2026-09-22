@@ -80,13 +80,22 @@ async function openOrShareFile(blob, filename, mime) {
 // handlers a cada render. O data-arquivo carrega o data:URL (já validado
 // e populado via esc() no HTML — ver documentos.js) só até o clique; a
 // conversão pra Blob só acontece na hora do uso, não é reprocessado à toa.
-document.addEventListener('click', (e) => {
+// data-doc-id (em vez de data-arquivo): auditoria de banda (PERFORMANCE.md,
+// Etapa 1) — a listagem de documentos não manda mais o PDF inteiro, só um
+// id; busca o arquivo do servidor sob demanda, só neste clique.
+document.addEventListener('click', async (e) => {
   const openBtn = e.target.closest('[data-pdf-open]');
   const saveBtn = e.target.closest('[data-pdf-save]');
   const btn = openBtn || saveBtn;
   if (!btn) return;
-  const dataUrl = btn.getAttribute('data-arquivo');
   const nome = btn.getAttribute('data-nome') || 'documento.pdf';
+  let dataUrl = btn.getAttribute('data-arquivo');
+  if (!dataUrl && btn.dataset.docId) {
+    btn.disabled = true;
+    try { const r = await DB.getArquivoDocumento(btn.dataset.docId); dataUrl = r.arquivo; }
+    catch (err) { if (typeof toast === 'function') toast(err.message || 'Não foi possível buscar o anexo.', true); btn.disabled = false; return; }
+    btn.disabled = false;
+  }
   if (!dataUrl) return;
   let blob;
   try { blob = dataUrlToBlob(dataUrl); }
