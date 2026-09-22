@@ -248,6 +248,24 @@ const DB = {
   registrarVisita:        (cid, v)  => API.post(`/contratos/${cid}/visitas`, { visita: v }),
   removerVisita:          (id)      => API.delete(`/visitas/${id}`),
 
+  // Produtos (ficha técnica) + rótulos versionados, leitura/geração por IA
+  getProdutos:            (cid)             => API.get(`/contratos/${cid}/produtos`),
+  saveProduto:            (cid, p)          => API.post(`/contratos/${cid}/produtos`, { produto: p }),
+  getRotulos:             (produtoId)       => API.get(`/produtos/${produtoId}/rotulos`),
+  uploadRotulo:           (produtoId, arq)  => API.post(`/produtos/${produtoId}/rotulos`, { arquivo: arq }),
+  analisarRotuloIA:       (produtoId, vId)  => API.post(`/produtos/${produtoId}/rotulos/${vId}/analisar`, {}),
+  decidirRotulo:          (produtoId, vId, aprovado, observacao) => API.patch(`/produtos/${produtoId}/rotulos/${vId}/decidir`, { aprovado, observacao }),
+  gerarTextoRotuloIA:     (produtoId)       => API.post(`/produtos/${produtoId}/rotulos/gerar-texto`, {}),
+  // O arquivo do rótulo exige Authorization (rota autenticada) — não dá pra
+  // usar <a href> puro; busca o Blob autenticado pra abrir/salvar/compartilhar
+  // com o helper de file-output.js.
+  getArquivoRotuloBlob:   async (produtoId, vId) => {
+    const token = sessionStorage.getItem(SESSION_KEY);
+    const res = await fetch(`${QUALI_API_URL}/api/produtos/${produtoId}/rotulo/${vId}/arquivo`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    if (!res.ok) throw new Error(`Não foi possível abrir o arquivo do rótulo (status ${res.status}).`);
+    return res.blob();
+  },
+
   // Plataforma (SaaS) — administradores de cliente (só master)
   getPlatformAdmins:  ()      => API.get('/platform/admins'),
   getPlatformTree:    ()      => API.get('/platform/tree'),

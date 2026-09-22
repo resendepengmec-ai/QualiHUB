@@ -32,6 +32,14 @@ const CHECKS = [
   // auditoria de fluxo — estava sem esc(), mesma classe de XSS já corrigida
   // nos outros módulos).
   { file: 'dashboard.js',   pattern: /src="\$\{(?!esc\()cAtual\.estabelecimentoFoto\}/ },
+  // pac.js: conteúdo vindo da IA (leitura de rótulo / rascunho gerado) é uma
+  // superfície nova — o modelo pode ecoar texto de um documento anexado
+  // (potencialmente malicioso) nos campos; todos precisam de esc() antes de
+  // virar innerHTML. Checa as duas variáveis desprotegidas mais prováveis de
+  // uma regressão (l/v do painel de extração, c.item/c.observacao do
+  // checklist) SEM esc() ao redor.
+  { file: 'pac.js', pattern: /\$\{l\}|\$\{v\}/ },
+  { file: 'pac.js', pattern: /\$\{c\.item\}|\$\{c\.observacao\}/ },
 ];
 
 let pass = 0, fail = 0;

@@ -2,13 +2,23 @@
   // ══════════════════════════════════════════════════════════════
   // P.A.C. (planilhas de autocontrole)
   // ══════════════════════════════════════════════════════════════
+  let pacSub = 'planilhas';
   async function renderPac() {
     const cid = getContratoAtual();
     view.innerHTML = `<div class="view-head"><div><div class="eyebrow">Autocontrole</div><h1>P.A.C.</h1>
       <p class="muted" style="font-size:.86rem;margin:.3rem 0 0">Planilhas aplicáveis a este contrato pelos regimes de inspeção. Lançamentos vão para aprovação do gestor.</p></div>
-      <button class="btn sm" id="pacPdf">Gerar PDF</button></div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <div class="subtabs" id="pacSubs"><button data-s="planilhas">Planilhas</button><button data-s="produtos">Produtos</button></div>
+        <button class="btn sm" id="pacPdf">Gerar PDF</button>
+      </div></div>
       <div id="pacBody" class="muted">Carregando…</div>`;
-    const _pdfBtn = $('#pacPdf'); if (_pdfBtn) _pdfBtn.onclick = () => abrirRelatorioPacModal();
+    $('#pacSubs').querySelectorAll('button').forEach(b => {
+      b.setAttribute('aria-current', String(b.dataset.s === pacSub));
+      b.onclick = () => { pacSub = b.dataset.s; renderPac(); };
+    });
+    const _pdfBtn = $('#pacPdf');
+    if (_pdfBtn) { _pdfBtn.onclick = () => abrirRelatorioPacModal(); _pdfBtn.style.display = pacSub === 'produtos' ? 'none' : ''; }
+    if (pacSub === 'produtos') return pacProdutos(cid);
     if (!cid) return $('#pacBody').innerHTML = `<div class="empty"><strong>Escolha um contrato</strong>Selecione um contrato acima para ver as planilhas.</div>`;
     let data;
     try { data = await DB.getPlanilhasDoContrato(cid); } catch (e) { return $('#pacBody').innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
@@ -187,4 +197,187 @@
     }).join('') : `<div class="empty"><strong>Sem leituras</strong>Lance a primeira em "Novo registro".</div>`;
     $('#tempBody').innerHTML = `<div class="eyebrow" style="margin:6px 0 8px">Equipamentos</div>${cards}
       <div class="eyebrow" style="margin:22px 0 8px">Leituras recentes</div>${lista}`;
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // PRODUTOS (ficha técnica) + RÓTULOS — leitura/geração por IA
+  // Promovido de "pt-formulacao" (planilha solta do P.A.C.) — formulação
+  // nunca foi um lançamento recorrente de verdade, é cadastro.
+  // ══════════════════════════════════════════════════════════════
+  const ESTADO_ROTULO_CHIP  = { rascunho: 'neutral', em_revisao: 'vencendo', aprovado: 'ok', reprovado: 'vencida' };
+  const ESTADO_ROTULO_LABEL = { rascunho: 'Rascunho', em_revisao: 'Em revisão', aprovado: 'Aprovado', reprovado: 'Reprovado' };
+  const CHECKLIST_ROTULO_CHIP = { ok: 'ok', ausente: 'vencida', inconsistente: 'vencendo' };
+
+  async function pacProdutos(cid) {
+    const body = $('#pacBody');
+    if (!cid) return body.innerHTML = `<div class="empty"><strong>Escolha um contrato</strong>Selecione um contrato acima para ver os produtos.</div>`;
+    body.innerHTML = '<p class="muted">Carregando…</p>';
+    const podeGerir = ['administrador', 'gestor'].includes(papelNoContrato(cid));
+    let produtos;
+    try { produtos = await DB.getProdutos(cid); } catch (e) { return body.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+    body.innerHTML = `
+      ${podeGerir ? `<div style="margin-bottom:14px"><button class="btn primary" id="prodNovo">Novo produto</button></div>` : ''}
+      ${produtos.length ? produtos.map(p => {
+        const ficha = [
+          p.percCarne != null ? 'Carne ' + p.percCarne + '%' : null,
+          p.percGordura != null ? 'Gordura ' + p.percGordura + '%' : null,
+          p.percSal != null ? 'Sal ' + p.percSal + '%' : null,
+        ].filter(Boolean).join(' · ') || 'Ficha técnica incompleta';
+        const selo = p.rotulo?.vigente
+          ? `<span class="chip ${ESTADO_ROTULO_CHIP[p.rotulo.vigente.estado] || 'neutral'}">Rótulo v${p.rotulo.vigente.versao} — ${ESTADO_ROTULO_LABEL[p.rotulo.vigente.estado] || p.rotulo.vigente.estado}</span>`
+          : `<span class="chip neutral">Sem rótulo</span>`;
+        return `<div class="card" data-abrir="${p.id}" style="cursor:pointer">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+            <strong>${esc(p.nome)}</strong>${selo}
+          </div>
+          <div class="muted" style="font-size:.82rem;margin-top:4px">${esc(ficha)}</div>
+        </div>`;
+      }).join('') : `<div class="empty"><strong>Nenhum produto cadastrado</strong>Cadastre a ficha técnica do primeiro produto deste contrato.</div>`}`;
+    if (podeGerir) $('#prodNovo').onclick = () => abrirProdutoFichaModal(cid, null, () => pacProdutos(cid));
+    body.querySelectorAll('[data-abrir]').forEach(el => el.onclick = () => abrirProdutoDetalheModal(cid, produtos.find(x => x.id === el.dataset.abrir), podeGerir));
+  }
+
+  // Modal simples: só a ficha técnica (criar ou editar). Reaberto de dentro
+  // do modal de detalhe também, pra não duplicar o formulário.
+  function abrirProdutoFichaModal(cid, produto, aoSalvar) {
+    const ed = !!produto;
+    openModal(`<h2>${ed ? 'Editar' : 'Novo'} produto</h2>
+      <label class="field"><span>Nome do produto</span><input id="pNome" value="${ed ? esc(produto.nome) : ''}"></label>
+      <div class="row">
+        <label class="field"><span>% carne</span><input id="pCarne" type="number" step="any" value="${ed && produto.percCarne != null ? produto.percCarne : ''}"></label>
+        <label class="field"><span>% gordura</span><input id="pGordura" type="number" step="any" value="${ed && produto.percGordura != null ? produto.percGordura : ''}"></label>
+        <label class="field"><span>% sal</span><input id="pSal" type="number" step="any" value="${ed && produto.percSal != null ? produto.percSal : ''}"></label>
+      </div>
+      <label class="field"><span>Conservantes</span><input id="pConserv" value="${ed ? esc(produto.conservantes || '') : ''}"></label>
+      <label class="field"><span>Registro Agrodefesa</span><input id="pRegistro" value="${ed ? esc(produto.registroAgrodefesa || '') : ''}"></label>
+      <div class="actions"><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="pOk">Salvar</button></div>`);
+    $('#pOk').onclick = async () => {
+      const nome = $('#pNome').value.trim(); if (!nome) return toast('Informe o nome do produto.', true);
+      const payload = {
+        nome, percCarne: $('#pCarne').value, percGordura: $('#pGordura').value, percSal: $('#pSal').value,
+        conservantes: $('#pConserv').value.trim(), registroAgrodefesa: $('#pRegistro').value.trim(),
+      };
+      if (ed) payload.id = produto.id;
+      $('#pOk').disabled = true;
+      try { const r = await DB.saveProduto(cid, payload); closeModal(); toast('Produto salvo.'); (aoSalvar || (() => {}))(r.produto); }
+      catch (e) { toast(e.message, true); $('#pOk').disabled = false; }
+    };
+  }
+
+  // Modal rico: ficha (resumo + editar) + rótulos (upload, versões,
+  // análise/checklist por IA, aprovar/reprovar) + gerar texto por IA.
+  function abrirProdutoDetalheModal(cid, produto, podeGerir) {
+    openModal(`<div class="eyebrow">Produto</div><h2>${esc(produto.nome)}</h2>
+      <div id="pdFicha"></div>
+      <p class="muted" style="font-size:.76rem;margin:10px 0 0">⚠ A leitura por IA é um apoio; a aprovação final do rótulo é responsabilidade do Responsável Técnico do contrato.</p>
+      <div class="eyebrow" style="margin:16px 0 8px">Rótulos</div>
+      <div id="pdRotulos" class="muted">Carregando…</div>
+      ${podeGerir ? `<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+        <label class="btn sm" style="cursor:pointer;margin:0">Novo rótulo (upload)<input type="file" id="pdArquivo" accept="image/*,application/pdf" style="display:none"></label>
+        <button type="button" class="btn ghost sm" id="pdGerarTexto">✨ Gerar texto com IA</button>
+      </div>
+      <div id="pdGerado"></div>` : ''}
+      <div class="actions"><button class="btn primary" onclick="closeModal()">Fechar</button></div>`);
+
+    const renderFicha = () => {
+      const ficha = [
+        produto.percCarne != null ? ['Carne', produto.percCarne + '%'] : null,
+        produto.percGordura != null ? ['Gordura', produto.percGordura + '%'] : null,
+        produto.percSal != null ? ['Sal', produto.percSal + '%'] : null,
+        produto.conservantes ? ['Conservantes', produto.conservantes] : null,
+        produto.registroAgrodefesa ? ['Registro Agrodefesa', produto.registroAgrodefesa] : null,
+      ].filter(Boolean);
+      $('#pdFicha').innerHTML = `<div class="card" style="box-shadow:none;border:1px solid var(--line)">
+        ${ficha.length ? ficha.map(([l, v]) => `<div style="font-size:.85rem;margin-top:2px"><span class="muted">${esc(l)}:</span> <strong>${esc(v)}</strong></div>`).join('') : '<span class="muted">Ficha técnica incompleta.</span>'}
+        ${podeGerir ? `<button type="button" class="btn ghost sm" id="pdEditarFicha" style="margin-top:8px">Editar ficha técnica</button>` : ''}
+      </div>`;
+      if (podeGerir) $('#pdEditarFicha').onclick = () => abrirProdutoFichaModal(cid, produto, (novo) => { produto = novo; renderFicha(); toast('Ficha atualizada.'); });
+    };
+    renderFicha();
+
+    const painelChecklist = (checklist) => !checklist || !checklist.length ? '' : `<div style="margin-top:8px">
+      ${checklist.map(c => `<div style="font-size:.8rem;margin-top:4px;display:flex;gap:6px;align-items:flex-start">
+        <span class="chip ${CHECKLIST_ROTULO_CHIP[c.status] || 'neutral'}" style="flex:none">${esc(c.item)}</span>
+        <span class="muted">${esc(c.observacao || '')}</span>
+      </div>`).join('')}
+    </div>`;
+    const painelExtracao = (ex) => !ex ? '' : `<div class="card" style="box-shadow:none;border:1px solid var(--line);margin-top:8px;background:var(--surface-2)">
+      <div class="eyebrow" style="margin:0">Leitura da IA</div>
+      ${[
+        ['Produto', ex.produto], ['Peso líquido', ex.pesoLiquido], ['Registro', ex.registro],
+        ['Ingredientes', (ex.ingredientes || []).join(', ') || null],
+        ['Alergênicos', (ex.alergenicos || []).join(', ') || null],
+        ['Fabricante', [ex.fabricante?.razaoSocial, ex.fabricante?.endereco].filter(Boolean).join(' — ') || null],
+      ].filter(([, v]) => v).map(([l, v]) => `<div style="font-size:.82rem;margin-top:4px"><span class="muted">${esc(l)}:</span> ${esc(v)}</div>`).join('')}
+      ${painelChecklist(ex.checklist)}
+    </div>`;
+
+    async function carregarRotulos() {
+      let versoes;
+      try { versoes = await DB.getRotulos(produto.id); } catch (e) { return $('#pdRotulos').innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+      $('#pdRotulos').innerHTML = versoes.length ? versoes.map(v => `<div class="card" style="box-shadow:none;border:1px solid var(--line)">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+            <div><strong>Versão ${v.versao}</strong> <span class="chip ${ESTADO_ROTULO_CHIP[v.estado] || 'neutral'}">${ESTADO_ROTULO_LABEL[v.estado] || v.estado}</span></div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <button type="button" class="btn ghost sm" data-ver="${v.id}">Ver arquivo</button>
+              ${(podeGerir && (v.estado === 'rascunho' || v.estado === 'em_revisao')) ? `<button type="button" class="btn ghost sm" data-analisar="${v.id}">✨ Analisar com IA</button>` : ''}
+              ${(podeGerir && v.estado === 'em_revisao') ? `<button type="button" class="btn primary sm" data-aprovar="${v.id}">Aprovar</button><button type="button" class="btn danger sm" data-reprovar="${v.id}">Reprovar</button>` : ''}
+            </div>
+          </div>
+          <div class="muted" style="font-size:.76rem;margin-top:4px">Enviado por ${esc(v.enviadoPorNome || v.enviadoPor)} em ${v.enviadoEm ? new Date(v.enviadoEm).toLocaleString('pt-BR') : ''}</div>
+          ${v.decisao ? `<div class="muted" style="font-size:.78rem;margin-top:4px">${v.estado === 'aprovado' ? 'Aprovado' : 'Reprovado'} por ${esc(v.decisao.porNome || v.decisao.por)}${v.decisao.observacao ? ' — ' + esc(v.decisao.observacao) : ''}</div>` : ''}
+          ${painelExtracao(v.extracaoIA)}
+        </div>`).join('') : `<div class="empty"><strong>Nenhum rótulo enviado ainda</strong>${podeGerir ? 'Use "Novo rótulo" abaixo pra subir a primeira versão.' : ''}</div>`;
+
+      $('#pdRotulos').querySelectorAll('[data-ver]').forEach(b => b.onclick = async () => {
+        b.disabled = true;
+        try { const blob = await DB.getArquivoRotuloBlob(produto.id, b.dataset.ver); openBlob(blob); }
+        catch (e) { toast(e.message, true); }
+        finally { b.disabled = false; }
+      });
+      $('#pdRotulos').querySelectorAll('[data-analisar]').forEach(b => b.onclick = async () => {
+        b.disabled = true; b.textContent = 'Analisando…';
+        try { await DB.analisarRotuloIA(produto.id, b.dataset.analisar); toast('Análise concluída.'); carregarRotulos(); }
+        catch (e) { toast(e.message, true); b.disabled = false; b.textContent = '✨ Analisar com IA'; }
+      });
+      $('#pdRotulos').querySelectorAll('[data-aprovar]').forEach(b => b.onclick = async () => {
+        try { await DB.decidirRotulo(produto.id, b.dataset.aprovar, true, ''); toast('Rótulo aprovado.'); carregarRotulos(); pacProdutos(cid); }
+        catch (e) { toast(e.message, true); }
+      });
+      $('#pdRotulos').querySelectorAll('[data-reprovar]').forEach(b => b.onclick = async () => {
+        const obs = prompt('Motivo da reprovação (opcional):') || '';
+        try { await DB.decidirRotulo(produto.id, b.dataset.reprovar, false, obs); toast('Rótulo reprovado.'); carregarRotulos(); pacProdutos(cid); }
+        catch (e) { toast(e.message, true); }
+      });
+    }
+    carregarRotulos();
+
+    if (podeGerir) {
+      $('#pdArquivo').onchange = async (e) => {
+        const file = e.target.files[0]; if (!file) return;
+        toast('Enviando rótulo…');
+        try {
+          const dataUrl = await new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = () => reject(new Error('Falha ao ler o arquivo.')); r.readAsDataURL(file); });
+          await DB.uploadRotulo(produto.id, dataUrl);
+          toast('Rótulo enviado.'); carregarRotulos(); pacProdutos(cid);
+        } catch (err) { toast(err.message, true); }
+        e.target.value = '';
+      };
+      $('#pdGerarTexto').onclick = async () => {
+        $('#pdGerarTexto').disabled = true; $('#pdGerarTexto').textContent = 'Gerando…';
+        $('#pdGerado').innerHTML = '';
+        try {
+          const { rascunho } = await DB.gerarTextoRotuloIA(produto.id);
+          $('#pdGerado').innerHTML = `<div class="card" style="box-shadow:none;border:1px solid var(--line);margin-top:10px;background:var(--surface-2)">
+            <div class="eyebrow" style="margin:0 0 6px">Rascunho gerado pela IA (copie para a peça gráfica)</div>
+            <div style="font-size:.82rem"><strong>Ingredientes:</strong><br>${esc((rascunho.ingredientes || []).join(', '))}</div>
+            ${rascunho.avisos?.length ? `<div style="font-size:.82rem;margin-top:8px"><strong>Avisos:</strong><br>${rascunho.avisos.map(a => esc(a)).join('<br>')}</div>` : ''}
+            ${rascunho.tabelaNutricionalPendente?.length ? `<div style="font-size:.8rem;margin-top:8px;color:var(--warn)">⚠ Campos que dependem de laudo laboratorial (não preenchidos pela IA): ${rascunho.tabelaNutricionalPendente.map(esc).join(', ')}</div>` : ''}
+            ${rascunho.observacao ? `<div class="muted" style="font-size:.76rem;margin-top:8px">${esc(rascunho.observacao)}</div>` : ''}
+            <p class="muted" style="font-size:.74rem;margin-top:8px">Isto é sempre um rascunho — a peça gráfica final e a aprovação são responsabilidade humana (RT do contrato). Não vira uma versão de rótulo sozinho.</p>
+          </div>`;
+        } catch (err) { toast(err.message, true); }
+        finally { $('#pdGerarTexto').disabled = false; $('#pdGerarTexto').textContent = '✨ Gerar texto com IA'; }
+      };
+    }
   }
