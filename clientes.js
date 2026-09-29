@@ -5,7 +5,8 @@
   async function renderClientes() {
     view.innerHTML = `<div class="view-head">
       <div><div class="eyebrow">Plataforma</div><h1>Clientes</h1>
-        <p class="muted" style="font-size:.86rem;margin:.3rem 0 0">Libere o e-mail do administrador de cada cliente. Ele entra com Google e cria os próprios contratos, estabelecimentos e acessos — vendo só o que é dele. Abaixo, a árvore só-leitura de tudo que cada cliente cadastrou.</p></div></div>
+        <p class="muted" style="font-size:.86rem;margin:.3rem 0 0">Libere o e-mail do administrador de cada cliente. Ele entra com Google e cria os próprios contratos, estabelecimentos e acessos — vendo só o que é dele. Abaixo, a árvore só-leitura de tudo que cada cliente cadastrou.</p></div>
+      <button class="btn sm" id="btnBackupDb">Baixar backup do banco</button></div>
       <div class="card">
         <div class="eyebrow">Novo administrador de cliente</div>
         <div class="row" style="margin-top:8px">
@@ -22,7 +23,7 @@
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
           <div><strong>${esc(c.numero)}</strong> ${c.sim ? '<span class="chip sim">S.I.M.</span>' : ''}
             ${c.objeto ? `<span class="muted" style="font-size:.82rem"> — ${esc(c.objeto)}</span>` : ''}</div>
-          <span class="muted" style="font-size:.78rem">${esc(c.estabelecimento || 'sem estabelecimento')}</span>
+          <span class="muted" style="font-size:.78rem">${esc((c.estabelecimentos && c.estabelecimentos.length) ? c.estabelecimentos.join(', ') : 'sem estabelecimento')}</span>
         </div>
         <div style="margin-top:8px">${c.membros.length
           ? c.membros.map(m => `<span class="chip neutral" style="margin:2px 6px 0 0">${papelCurto[m.papel] || m.papel}: ${esc(m.name || m.email)}</span>`).join('')
@@ -61,6 +62,16 @@
         try { await DB.removePlatformAdmin(b.dataset.rm); toast('Acesso revogado.'); listar(); } catch (e) { toast(e.message, true); }
       });
     }
+    $('#btnBackupDb').onclick = async () => {
+      $('#btnBackupDb').disabled = true; $('#btnBackupDb').textContent = 'Gerando backup…';
+      try {
+        const blob = await DB.getBackupDbBlob();
+        const ts = new Date().toISOString().replace(/[:.]/g, '-');
+        downloadBlob(blob, `quali-backup-${ts}.db`);
+        toast('Backup baixado.');
+      } catch (e) { toast(e.message, true); }
+      finally { $('#btnBackupDb').disabled = false; $('#btnBackupDb').textContent = 'Baixar backup do banco'; }
+    };
     $('#adAdd').onclick = async () => {
       const email = $('#adEmail').value.trim();
       if (!email.includes('@')) return toast('E-mail inválido.', true);

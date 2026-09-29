@@ -271,6 +271,16 @@ const DB = {
     return res.blob();
   },
 
+  // Backup manual do banco (PERFORMANCE.md) — só master. Ponto de
+  // restauração sob demanda antes de uma mudança arquitetural grande, sem
+  // esperar o snapshot automático diário do Render.
+  getBackupDbBlob:        async () => {
+    const token = sessionStorage.getItem(SESSION_KEY);
+    const res = await fetch(`${QUALI_API_URL}/api/admin/backup-db`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    if (!res.ok) throw new Error(`Não foi possível gerar o backup (status ${res.status}).`);
+    return res.blob();
+  },
+
   // Plataforma (SaaS) — administradores de cliente (só master)
   getPlatformAdmins:  ()      => API.get('/platform/admins'),
   getPlatformTree:    ()      => API.get('/platform/tree'),
