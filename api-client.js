@@ -216,7 +216,10 @@ const DB = {
 
   // Dashboard
   getStats:           (cid)   => API.get('/stats' + (cid ? `?contrato=${cid}` : '')),
-  getHomeResumo:      ()      => API.get('/home/resumo'),
+  // Sem o contrato, o backend agrega TODOS os contratos do usuário (ver
+  // GET /home/resumo em api.js) — o hub deve mostrar o contrato
+  // selecionado na barra superior, não o total cross-contrato.
+  getHomeResumo:      ()      => { const cid = getContratoAtual(); return API.get('/home/resumo' + (cid ? `?contrato=${cid}` : '')); },
   getRelatorioOcorrencias: (q) => API.get('/relatorios/ocorrencias' + (q ? `?${q}` : '')),
   getRelatorioPac:         (q) => API.get('/relatorios/pac' + (q ? `?${q}` : '')),
 
