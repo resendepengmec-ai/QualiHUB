@@ -189,9 +189,36 @@
     });
   }
 
+  // GET /relatorios/ocorrencias manda as ocorrências no formato "de
+  // listagem" (thumbUrl/arquivoPath, nunca dataUrl — Etapa 2 do
+  // PERFORMANCE.md tirou o binário do banco). O PDF precisa da foto em
+  // tamanho cheio; busca sob demanda pela mesma rota já usada pra ampliar
+  // foto na tela (GET /ocorrencias/:id/fotos), em BLOCOS pequenos
+  // (Promise.all limitado, não tudo de uma vez) pra não gerar uma rajada de
+  // N requisições simultâneas nem prender a resposta de nenhuma delas em
+  // memória por mais tempo que o necessário — mesmo raciocínio de RAM/banda
+  // da rodada anterior, só que aplicado ao lado do cliente que monta o PDF.
+  const LOTE_FOTOS_PDF = 5;
+  async function _carregarFotosParaPdf(ocorrencias, onProgresso) {
+    const comFotos = ocorrencias.filter(o =>
+      (o.fotos || []).some(f => f && f.arquivoPath) || (o.fotosExecucao || []).some(f => f && f.arquivoPath));
+    for (let i = 0; i < comFotos.length; i += LOTE_FOTOS_PDF) {
+      const lote = comFotos.slice(i, i + LOTE_FOTOS_PDF);
+      if (onProgresso) onProgresso(Math.min(i + LOTE_FOTOS_PDF, comFotos.length), comFotos.length);
+      await Promise.all(lote.map(async (o) => {
+        try {
+          const r = await DB.getFotosOcorrencia(o.id);
+          if (r.fotos) o.fotos = r.fotos;
+          if (r.fotosExecucao) o.fotosExecucao = r.fotosExecucao;
+        } catch (e) { /* essa ocorrência fica sem foto no PDF, o resto do relatório segue normal */ }
+      }));
+    }
+  }
+
   function gerarRelatorioPDF(d) {
     toast('Gerando PDF...');
-    ensurePdfMake().then(() => {
+    ensurePdfMake().then(async () => {
+      await _carregarFotosParaPdf(d.ocorrencias, (feito, total) => toast(`Gerando PDF... carregando fotos (${feito}/${total})`));
       const cab = d.cabecalho || {};
       const temBranding = !!(cab.logoDataUrl || cab.razaoSocial || cab.nomeFantasia);
       const linhaEscopo = [d.escopo.contratoNumero ? 'Contrato ' + d.escopo.contratoNumero : 'Todos os contratos'];
