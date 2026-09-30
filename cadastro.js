@@ -259,6 +259,10 @@
           <div style="margin-top:4px"><b>Token:</b> <span class="mono" style="word-break:break-all">${esc(e.token)}</span> <button class="btn ghost sm" data-copia="${esc(e.token)}">copiar</button></div>
           <div class="muted" style="margin-top:6px">O sensor faz <b>POST</b> em JSON: <span class="mono">{ "token": "…", "valor": 4.2 }</span>. Opcional: <span class="mono">"medidoEm"</span> (epoch ms).</div>
           <button class="btn sm" data-regen="${e.id}" style="margin-top:8px">Regerar token</button>
+          ${e.tuyaDeviceId ? `<div class="muted" style="margin-top:8px;padding-top:8px;border-top:1px solid var(--line)">
+            <b>Sensor Tuya:</b> ${e.tuyaUltimaLeituraEm ? `última leitura ${new Date(e.tuyaUltimaLeituraEm).toLocaleString('pt-BR')}` : 'ainda sem leitura'}
+            ${e.tuyaUltimoErro ? `<br><span class="chip atraso">Erro em ${new Date(e.tuyaUltimoErro.em).toLocaleString('pt-BR')}: ${esc(e.tuyaUltimoErro.msg)}</span>` : ''}
+          </div>` : ''}
         </div></div>` : ''}
     </div>`;
   }
@@ -267,6 +271,9 @@
     const ed = !!e;
     const cats = Object.entries(CATEGORIAS_EQUIP).map(([k, v]) => `<option value="${k}" ${ed && e.categoria === k ? 'selected' : ''}>${v}</option>`).join('');
     const modos = [['manual', 'Manual'], ['iot', 'IoT (sensor)'], ['ambos', 'Manual + IoT']].map(([k, v]) => `<option value="${k}" ${ed && e.modo === k ? 'selected' : ''}>${v}</option>`).join('');
+    const modoAtual = ed ? e.modo : 'manual';
+    const regioes = [['us', 'América'], ['eu', 'Europa'], ['cn', 'China'], ['in', 'Índia']]
+      .map(([k, v]) => `<option value="${k}" ${ed && (e.tuyaRegiao || 'us') === k ? 'selected' : ''}>${v}</option>`).join('');
     openModal(`<h2>${ed ? 'Editar' : 'Novo'} equipamento / recinto</h2>
       <div class="row"><label class="field"><span>Nome</span><input id="eqNome" value="${ed ? esc(e.nome) : ''}" placeholder="Ex.: Câmara fria 1"></label>
         <label class="field"><span>Categoria</span><select id="eqCat">${cats}</select></label></div>
@@ -277,12 +284,54 @@
       <label class="field"><span>Identificação do sensor (opcional)</span><input id="eqSensor" value="${ed ? esc(e.sensorId || '') : ''}" placeholder="Ex.: ESP32-cam1"></label>
       ${campoEstabelecimento(cid, ed ? (e.estabelecimentoId || null) : null, 'eqEst')}
       <p class="muted" style="font-size:.76rem;margin-top:-4px">Em modo IoT, um token é gerado ao salvar (aparece no card do equipamento).</p>
+      <div id="eqTuyaBlock" style="display:${(modoAtual === 'iot' || modoAtual === 'ambos') ? 'block' : 'none'};margin-top:10px;background:var(--surface-2);border-radius:8px;padding:10px">
+        <p class="eyebrow" style="margin:0 0 8px">Sensor Tuya (opcional)</p>
+        <div class="row"><label class="field"><span>Access ID</span><input id="eqTuyaAccessId" value="${ed ? esc(e.tuyaAccessId || '') : ''}"></label>
+          <label class="field"><span>Access Secret</span><input id="eqTuyaAccessSecret" value="${ed ? esc(e.tuyaAccessSecret || '') : ''}"></label></div>
+        <div class="row"><label class="field"><span>Device ID</span><input id="eqTuyaDeviceId" value="${ed ? esc(e.tuyaDeviceId || '') : ''}"></label>
+          <label class="field"><span>Região</span><select id="eqTuyaRegiao">${regioes}</select></label></div>
+        ${ed ? `<button class="btn ghost sm" type="button" id="eqTuyaTestar">Testar conexão</button><div id="eqTuyaResultado" style="margin-top:8px"></div>`
+             : `<p class="muted" style="font-size:.76rem">Salve o equipamento uma vez antes de testar a conexão com o sensor.</p>`}
+        <div class="row" style="margin-top:8px"><label class="field"><span>Data point (código)</span><input id="eqTuyaDpCode" value="${ed ? esc(e.tuyaDpCode || '') : ''}" placeholder="Ex.: temp_current_external"></label>
+          <label class="field"><span>Escala (divisor)</span><input id="eqTuyaEscala" type="number" step="any" value="${ed && e.tuyaEscala != null ? e.tuyaEscala : 10}"></label></div>
+      </div>
       <div class="actions"><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="eqOk">Salvar</button></div>`);
+    $('#eqModo').onchange = () => {
+      const m = $('#eqModo').value;
+      $('#eqTuyaBlock').style.display = (m === 'iot' || m === 'ambos') ? 'block' : 'none';
+    };
+    if (ed) {
+      $('#eqTuyaTestar').onclick = async () => {
+        $('#eqTuyaTestar').disabled = true;
+        $('#eqTuyaResultado').innerHTML = '<p class="muted" style="font-size:.78rem">Testando…</p>';
+        try {
+          const credenciais = {
+            tuyaAccessId: $('#eqTuyaAccessId').value.trim(),
+            tuyaAccessSecret: $('#eqTuyaAccessSecret').value,
+            tuyaDeviceId: $('#eqTuyaDeviceId').value.trim(),
+            tuyaRegiao: $('#eqTuyaRegiao').value,
+          };
+          const r = await DB.testarTuya(e.id, credenciais);
+          const props = r.properties || [];
+          $('#eqTuyaResultado').innerHTML = props.length
+            ? `<p class="muted" style="font-size:.78rem">Seu sensor reporta isto — escolha qual é a temperatura:</p>
+               <select id="eqTuyaDpEscolha">${props.map(p => `<option value="${esc(p.code)}">${esc(p.code)} — ${esc(String(p.value))}</option>`).join('')}</select>`
+            : '<p class="muted" style="font-size:.78rem">O sensor respondeu, mas sem nenhum data point.</p>';
+          if (props.length) $('#eqTuyaDpEscolha').onchange = () => { $('#eqTuyaDpCode').value = $('#eqTuyaDpEscolha').value; };
+        } catch (err) {
+          $('#eqTuyaResultado').innerHTML = `<p class="chip atraso" style="display:inline-block">${esc(err.message)}</p>`;
+        }
+        $('#eqTuyaTestar').disabled = false;
+      };
+    }
     $('#eqOk').onclick = async () => {
       const nome = $('#eqNome').value.trim(); if (!nome) return toast('Informe o nome.', true);
       const payload = { nome, categoria: $('#eqCat').value, limiteMin: $('#eqMin').value, limiteMax: $('#eqMax').value,
         freqPorDia: $('#eqFreq').value, modo: $('#eqModo').value, sensorId: $('#eqSensor').value.trim(),
-        estabelecimentoId: lerEstabelecimento('eqEst') };
+        estabelecimentoId: lerEstabelecimento('eqEst'),
+        tuyaAccessId: $('#eqTuyaAccessId').value.trim(), tuyaAccessSecret: $('#eqTuyaAccessSecret').value,
+        tuyaDeviceId: $('#eqTuyaDeviceId').value.trim(), tuyaRegiao: $('#eqTuyaRegiao').value,
+        tuyaDpCode: $('#eqTuyaDpCode').value.trim(), tuyaEscala: $('#eqTuyaEscala').value };
       if (ed) payload.id = e.id;
       try { await DB.saveEquipamento(cid, payload); closeModal(); toast('Equipamento salvo.'); cadEquipamentos(); }
       catch (err) { toast(err.message, true); }

@@ -240,6 +240,7 @@ const DB = {
   saveEquipamento:        (cid, e)  => API.post(`/contratos/${cid}/equipamentos`, { equipamento: e }),
   removeEquipamento:      (id)      => API.delete(`/equipamentos/${id}`),
   regenerarTokenEquip:    (id)      => API.post(`/equipamentos/${id}/regenerar-token`, {}),
+  testarTuya:             (id, credenciais) => API.post(`/equipamentos/${id}/tuya/testar`, { credenciais }),
   criarTemperatura:       (contratoId, leituras) => API.post('/pac/temperatura', { contratoId, leituras }),
 
   // Documentos sanitários
