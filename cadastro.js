@@ -314,12 +314,25 @@
             tuyaRegiao: $('#eqTuyaRegiao').value,
           };
           const r = await DB.testarTuya(e.id, credenciais);
-          const props = r.properties || [];
-          $('#eqTuyaResultado').innerHTML = props.length
-            ? `<p class="muted" style="font-size:.78rem">Seu sensor reporta isto — escolha qual é a temperatura:</p>
-               <select id="eqTuyaDpEscolha">${props.map(p => `<option value="${esc(p.code)}">${esc(p.code)} — ${esc(String(p.value))}</option>`).join('')}</select>`
-            : '<p class="muted" style="font-size:.78rem">O sensor respondeu, mas sem nenhum data point.</p>';
-          if (props.length) $('#eqTuyaDpEscolha').onchange = () => { $('#eqTuyaDpCode').value = $('#eqTuyaDpEscolha').value; };
+          const temps = r.temperaturas || [];
+          if (!temps.length) {
+            $('#eqTuyaResultado').innerHTML = '<p class="muted" style="font-size:.78rem">O sensor respondeu, mas não encontrei nenhuma temperatura nele.</p>';
+          } else {
+            const rotulo = (t) => t.code === 'temp_current_external' ? 'Temperatura externa (°C)' : (t.code === 'temp_current' ? 'Temperatura interna (°C)' : t.code);
+            $('#eqTuyaResultado').innerHTML = `<p class="muted" style="font-size:.78rem">Escolha qual temperatura este equipamento deve acompanhar:</p>
+               <select id="eqTuyaDpEscolha">${temps.map(t => `<option value="${esc(t.code)}" data-escala="${t.escalaSugerida}">${esc(rotulo(t))} — ${t.valorCalibrado}${esc(t.unidade)} agora</option>`).join('')}</select>`;
+            const aplicarEscolha = () => {
+              const op = $('#eqTuyaDpEscolha').selectedOptions[0];
+              $('#eqTuyaDpCode').value = op.value;
+              $('#eqTuyaEscala').value = op.dataset.escala;
+            };
+            $('#eqTuyaDpEscolha').onchange = aplicarEscolha;
+            // Pré-seleciona a sonda externa quando existir (senão, a primeira
+            // da lista) — escala já vem preenchida sozinha, sem precisar digitar.
+            const idxExterna = temps.findIndex(t => t.code === 'temp_current_external');
+            $('#eqTuyaDpEscolha').selectedIndex = idxExterna >= 0 ? idxExterna : 0;
+            aplicarEscolha();
+          }
         } catch (err) {
           $('#eqTuyaResultado').innerHTML = `<p class="chip atraso" style="display:inline-block">${esc(err.message)}</p>`;
         }
