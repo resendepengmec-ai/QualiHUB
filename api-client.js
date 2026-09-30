@@ -230,7 +230,7 @@ const DB = {
   // P.A.C.
   getPlanilhaTipos:       ()        => API.get('/planilha-tipos'),
   getPlanilhasDoContrato: (cid)     => API.get(`/contratos/${cid}/planilhas`),
-  getRegistrosPac:        (cid, t)  => API.get(`/contratos/${cid}/pac` + (t ? `?planilha=${t}` : '')),
+  getRegistrosPac:        (cid, t, periodo) => { const p = new URLSearchParams(); if (t) p.set('planilha', t); if (periodo?.from) p.set('from', periodo.from); if (periodo?.to) p.set('to', periodo.to); const q = p.toString(); return API.get(`/contratos/${cid}/pac` + (q ? `?${q}` : '')); },
   criarRegistroPac:       (r)       => API.post('/pac', { registro: r }),
   decidirRegistroPac:     (id, aprovado, observacao) => API.patch(`/pac/${id}/decidir`, { aprovado, observacao }),
   getFotosPac:            (id)      => API.get(`/pac/${id}/fotos`),

@@ -157,18 +157,71 @@
     };
   }
 
+  // Carrega o Chart.js sob demanda (CDN, mesmo padrão de ensurePdfMake em
+  // pdf.js) — só a tela de Temperatura precisa dele, não vale carregar em
+  // todo boot do app.
+  let _chartLoad;
+  const _CHARTJS_SRCS = [
+    'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js',
+    'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js',
+  ];
+  function ensureChartJs() {
+    if (window.Chart) return Promise.resolve();
+    if (_chartLoad) return _chartLoad;
+    const load = (src) => new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('Falha ao carregar ' + src)); document.head.appendChild(s); });
+    const tentar = (i) => load(_CHARTJS_SRCS[i]).catch(err => { if (i + 1 < _CHARTJS_SRCS.length) return tentar(i + 1); throw err; });
+    _chartLoad = tentar(0).catch(err => { _chartLoad = null; throw err; });
+    return _chartLoad;
+  }
+
+  const _CORES_EQUIP = ['#45912E', '#C4442E', '#C77A1A', '#2E6620', '#6B7A73', '#2E9E6B'];
+  let _tempChart = null;
+  function _renderGraficoTemperatura(eqs, regs) {
+    const porEquip = {};
+    regs.forEach(r => (r.dados?.leituras || []).forEach(l => {
+      (porEquip[l.equipamentoId] = porEquip[l.equipamentoId] || []).push({ x: r.criadoEm || 0, y: l.valor });
+    }));
+    const datasets = eqs.filter(e => porEquip[e.id]?.length).map((e, i) => ({
+      label: e.nome,
+      data: porEquip[e.id].sort((a, b) => a.x - b.x),
+      borderColor: _CORES_EQUIP[i % _CORES_EQUIP.length],
+      backgroundColor: _CORES_EQUIP[i % _CORES_EQUIP.length],
+      tension: 0.25, pointRadius: 2.5, borderWidth: 2,
+    }));
+    if (_tempChart) { _tempChart.destroy(); _tempChart = null; }
+    const canvas = $('#tempChart');
+    if (!canvas || !datasets.length) return;
+    _tempChart = new Chart(canvas.getContext('2d'), {
+      type: 'line',
+      data: { datasets },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        scales: {
+          x: { type: 'linear', ticks: { callback: (v) => new Date(v).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) } },
+          y: { title: { display: true, text: '°C' } },
+        },
+        plugins: { legend: { display: datasets.length > 1 } },
+      },
+    });
+  }
+
   // ── Tela dedicada de Temperatura (módulo próprio) ──────────────
+  let _tempDataSelecionada = new Date().toISOString().slice(0, 10);
   async function renderTemperatura() {
     const cid = getContratoAtual();
     view.innerHTML = `<div class="view-head"><div><div class="eyebrow">Monitoramento</div><h1>Temperatura</h1>
       <p class="muted" style="font-size:.86rem;margin:.3rem 0 0">Câmaras, balcões e sensores com conformidade automática (manual e IoT).</p></div>
-      <div style="display:flex;gap:8px"><button class="btn sm" id="tPdf">Gerar PDF</button><button class="btn primary" id="tNovo">Novo registro</button></div></div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <label class="field" style="margin:0"><span>Dia</span><input type="date" id="tempData" value="${_tempDataSelecionada}"></label>
+        <button class="btn sm" id="tPdf">Gerar PDF</button><button class="btn primary" id="tNovo">Novo registro</button>
+      </div></div>
       <div id="tempBody" class="muted">Carregando…</div>`;
     $('#tPdf').onclick = () => abrirRelatorioTemperaturaModal();
+    $('#tempData').onchange = () => { _tempDataSelecionada = $('#tempData').value; renderTemperatura(); };
     if (!cid) return $('#tempBody').innerHTML = `<div class="empty"><strong>Escolha um contrato</strong>Selecione um contrato acima para ver a temperatura.</div>`;
     $('#tNovo').onclick = () => abrirTemperatura(cid);
     let eqs = [], regs = [];
-    try { [eqs, regs] = await Promise.all([DB.getEquipamentos(cid), DB.getRegistrosPac(cid, 'pt-temperatura')]); }
+    try { [eqs, regs] = await Promise.all([DB.getEquipamentos(cid), DB.getRegistrosPac(cid, 'pt-temperatura', { from: _tempDataSelecionada, to: _tempDataSelecionada })]); }
     catch (e) { return $('#tempBody').innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
     const ult = {};
     regs.forEach(r => (r.dados?.leituras || []).forEach(l => {
@@ -184,19 +237,23 @@
           <div class="muted" style="font-size:.82rem;margin-top:2px">Faixa ${faixa} · ${modoL[e.modo] || e.modo}${e.freqPorDia ? ' · ' + e.freqPorDia + '×/dia' : ''}</div></div>
         <div style="text-align:right;flex:none">${chip}
           <div style="font-size:1.3rem;font-weight:800;color:${u ? (u.conforme ? 'var(--ok)' : 'var(--danger)') : 'var(--muted)'}">${u ? u.valor + '°C' : '—'}</div>
-          <div class="muted" style="font-size:.72rem">${u ? ((u.origem === 'iot' ? 'IoT · ' : 'Manual · ') + _tempoRel(u.em)) : 'aguardando'}</div></div>
+          <div class="muted" style="font-size:.72rem">${u ? ((u.origem === 'iot' ? 'IoT · ' : 'Manual · ') + _tempoRel(u.em)) : 'sem leitura no dia'}</div></div>
       </div></div>`;
     }).join('') : `<div class="empty"><strong>Nenhum equipamento</strong>Cadastre câmaras/balcões/salas em Cadastro → Equipamentos.</div>`;
-    const lista = regs.length ? regs.slice(0, 12).map(r => {
+    const temGrafico = regs.some(r => (r.dados?.leituras || []).length);
+    const grafico = temGrafico ? `<div class="card" style="height:280px"><canvas id="tempChart"></canvas></div>` : '';
+    const lista = regs.length ? regs.slice(0, 30).map(r => {
       const conf = r.dados?.conformeGeral ? '<span class="chip ok">conforme</span>' : '<span class="chip atraso">não conforme</span>';
       const org = `<span class="chip neutral">${r.origem === 'iot' ? 'IoT' : 'Manual'}</span>`;
       const leit = (r.dados?.leituras || []).map(l => `${esc(l.nome)}: <b style="color:${l.conforme ? 'var(--ok)' : 'var(--danger)'}">${esc(l.valor)}°C</b>`).join(' · ');
       return `<div class="card" style="box-shadow:none;border:1px solid var(--line)">
         <div style="display:flex;justify-content:space-between;align-items:center">${conf} ${org}<span class="muted" style="font-size:.76rem">${r.criadoEm ? new Date(r.criadoEm).toLocaleString('pt-BR') : ''}</span></div>
         <div style="font-size:.85rem;margin-top:6px">${leit || '—'}</div></div>`;
-    }).join('') : `<div class="empty"><strong>Sem leituras</strong>Lance a primeira em "Novo registro".</div>`;
+    }).join('') : `<div class="empty"><strong>Sem leituras neste dia</strong>Escolha outra data ou lance a primeira em "Novo registro".</div>`;
     $('#tempBody').innerHTML = `<div class="eyebrow" style="margin:6px 0 8px">Equipamentos</div>${cards}
-      <div class="eyebrow" style="margin:22px 0 8px">Leituras recentes</div>${lista}`;
+      ${grafico ? `<div class="eyebrow" style="margin:22px 0 8px">Gráfico do dia</div>${grafico}` : ''}
+      <div class="eyebrow" style="margin:22px 0 8px">Leituras do dia</div>${lista}`;
+    if (temGrafico) ensureChartJs().then(() => _renderGraficoTemperatura(eqs, regs)).catch(e => console.error('Chart.js:', e.message));
   }
 
   // ══════════════════════════════════════════════════════════════

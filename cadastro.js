@@ -294,8 +294,7 @@
              : `<p class="muted" style="font-size:.76rem">Salve o equipamento uma vez antes de testar a conexão com o sensor.</p>`}
         <div class="row" style="margin-top:8px"><label class="field"><span>Data point (código)</span><input id="eqTuyaDpCode" value="${ed ? esc(e.tuyaDpCode || '') : ''}" placeholder="Ex.: temp_current_external"></label>
           <label class="field"><span>Escala (divisor)</span><input id="eqTuyaEscala" type="number" step="any" value="${ed && e.tuyaEscala != null ? e.tuyaEscala : 10}"></label></div>
-        <label class="field" style="margin-top:8px"><span>Intervalo de envio (minutos)</span><input id="eqTuyaIntervalo" type="number" step="1" min="1" value="${ed && e.tuyaIntervaloMs != null ? Math.round(e.tuyaIntervaloMs / 60000) : ''}" placeholder="Padrão do sistema (5 min)"></label>
-        <p class="muted" style="font-size:.74rem;margin-top:-4px">Deixe em branco pra usar o padrão do sistema. Mínimo 1 minuto.</p>
+        <p class="muted" style="font-size:.74rem;margin-top:6px">O sensor é consultado a cada 5 min (padrão do sistema); o que vira registro de temperatura segue a "Frequência (medições por dia)" acima — cada registro é a MÉDIA das leituras de 5 min coletadas no intervalo correspondente.</p>
       </div>
       <div class="actions"><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="eqOk">Salvar</button></div>`);
     $('#eqModo').onchange = () => {
@@ -346,8 +345,7 @@
         estabelecimentoId: lerEstabelecimento('eqEst'),
         tuyaAccessId: $('#eqTuyaAccessId').value.trim(), tuyaAccessSecret: $('#eqTuyaAccessSecret').value,
         tuyaDeviceId: $('#eqTuyaDeviceId').value.trim(), tuyaRegiao: $('#eqTuyaRegiao').value,
-        tuyaDpCode: $('#eqTuyaDpCode').value.trim(), tuyaEscala: $('#eqTuyaEscala').value,
-        tuyaIntervaloMs: $('#eqTuyaIntervalo').value ? Number($('#eqTuyaIntervalo').value) * 60000 : '' };
+        tuyaDpCode: $('#eqTuyaDpCode').value.trim(), tuyaEscala: $('#eqTuyaEscala').value };
       if (ed) payload.id = e.id;
       try { await DB.saveEquipamento(cid, payload); closeModal(); toast('Equipamento salvo.'); cadEquipamentos(); }
       catch (err) { toast(err.message, true); }
