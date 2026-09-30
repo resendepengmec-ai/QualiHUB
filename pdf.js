@@ -114,6 +114,15 @@
         if (Array.isArray(dd.leituras)) {
           const l = dd.leituras.map(x => `${x.nome}: ${x.valor}°C ${x.conforme ? '(conforme)' : '(não conforme)'}`);
           l.push('Conformidade geral: ' + (dd.conformeGeral ? 'conforme' : 'não conforme') + (reg.origem === 'iot' ? ' · IoT' : ''));
+          // Telemetria ambiental (ambiente/umidade/bateria) — só enriquece o
+          // registro quando presente (sensor Tuya); nunca entra na
+          // conformidade, que continua baseada só na sonda (dd.leituras acima).
+          const tel = dd.telemetria;
+          if (tel) {
+            if (tel.ambiente) l.push(`Ambiente: ${tel.ambiente.temperaturaC}°C`);
+            if (tel.umidade) l.push(`Umidade: ${tel.umidade.valorPct}%`);
+            if (tel.bateria) l.push(`Bateria: ${tel.bateria.label || tel.bateria.estado}`);
+          }
           return l.join('\n');
         }
         const parts = [];

@@ -175,37 +175,116 @@
   }
 
   const _CORES_EQUIP = ['#45912E', '#C4442E', '#C77A1A', '#2E6620', '#6B7A73', '#2E9E6B'];
-  let _tempChart = null;
-  function _renderGraficoTemperatura(eqs, regs) {
-    const porEquip = {};
-    regs.forEach(r => (r.dados?.leituras || []).forEach(l => {
-      (porEquip[l.equipamentoId] = porEquip[l.equipamentoId] || []).push({ x: r.criadoEm || 0, y: l.valor });
-    }));
-    const datasets = eqs.filter(e => porEquip[e.id]?.length).map((e, i) => ({
-      label: e.nome,
-      data: porEquip[e.id].sort((a, b) => a.x - b.x),
-      borderColor: _CORES_EQUIP[i % _CORES_EQUIP.length],
-      backgroundColor: _CORES_EQUIP[i % _CORES_EQUIP.length],
-      tension: 0.25, pointRadius: 2.5, borderWidth: 2,
-    }));
-    if (_tempChart) { _tempChart.destroy(); _tempChart = null; }
-    const canvas = $('#tempChart');
+  const _EIXO_TEMPO = { type: 'linear', ticks: { callback: (v) => new Date(v).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) } };
+
+  // Sonda + Ambiente no MESMO gráfico (mesma unidade, °C) — sonda em linha
+  // sólida, ambiente tracejada, nunca misturado com umidade (eixo
+  // incompatível, gráfico à parte logo abaixo).
+  let _tempChartTemp = null;
+  function _renderGraficoTemperaturas(eqs, regs) {
+    const datasets = [];
+    eqs.forEach((e, i) => {
+      const cor = _CORES_EQUIP[i % _CORES_EQUIP.length];
+      const sonda = regs.map(r => { const l = (r.dados?.leituras || []).find(x => x.equipamentoId === e.id); return l ? { x: r.criadoEm || 0, y: l.valor } : null; })
+        .filter(Boolean).sort((a, b) => a.x - b.x);
+      if (sonda.length) datasets.push({ label: e.nome + ' · sonda', data: sonda, borderColor: cor, backgroundColor: cor, tension: 0.25, pointRadius: 2.5, borderWidth: 2 });
+      const ambiente = regs.map(r => { const t = r.dados?.telemetria?.ambiente; return (t && t.temperaturaC != null) ? { x: r.criadoEm || 0, y: t.temperaturaC } : null; })
+        .filter(Boolean).sort((a, b) => a.x - b.x);
+      if (ambiente.length) datasets.push({ label: e.nome + ' · ambiente', data: ambiente, borderColor: cor, backgroundColor: cor, borderDash: [5, 4], tension: 0.25, pointRadius: 2, borderWidth: 1.5 });
+    });
+    if (_tempChartTemp) { _tempChartTemp.destroy(); _tempChartTemp = null; }
+    const canvas = $('#tempChartTemp');
     if (!canvas || !datasets.length) return;
-    _tempChart = new Chart(canvas.getContext('2d'), {
-      type: 'line',
-      data: { datasets },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        scales: {
-          x: { type: 'linear', ticks: { callback: (v) => new Date(v).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) } },
-          y: { title: { display: true, text: '°C' } },
-        },
-        plugins: { legend: { display: datasets.length > 1 } },
-      },
+    _tempChartTemp = new Chart(canvas.getContext('2d'), {
+      type: 'line', data: { datasets },
+      options: { responsive: true, maintainAspectRatio: false, scales: { x: _EIXO_TEMPO, y: { title: { display: true, text: '°C' } } }, plugins: { legend: { display: true } } },
     });
   }
 
-  // ── Tela dedicada de Temperatura (módulo próprio) ──────────────
+  // Umidade em gráfico PRÓPRIO — eixo % nunca compartilhado com temperatura.
+  let _tempChartUmid = null;
+  function _renderGraficoUmidade(eqs, regs) {
+    const datasets = eqs.map((e, i) => {
+      const pontos = regs.map(r => { const t = r.dados?.telemetria?.umidade; return (t && t.valorPct != null) ? { x: r.criadoEm || 0, y: t.valorPct } : null; })
+        .filter(Boolean).sort((a, b) => a.x - b.x);
+      return pontos.length ? { label: e.nome, data: pontos, borderColor: _CORES_EQUIP[i % _CORES_EQUIP.length], backgroundColor: _CORES_EQUIP[i % _CORES_EQUIP.length], tension: 0.25, pointRadius: 2.5, borderWidth: 2 } : null;
+    }).filter(Boolean);
+    if (_tempChartUmid) { _tempChartUmid.destroy(); _tempChartUmid = null; }
+    const canvas = $('#tempChartUmid');
+    if (!canvas || !datasets.length) return;
+    _tempChartUmid = new Chart(canvas.getContext('2d'), {
+      type: 'line', data: { datasets },
+      options: { responsive: true, maintainAspectRatio: false, scales: { x: _EIXO_TEMPO, y: { title: { display: true, text: '%' }, min: 0, max: 100 } }, plugins: { legend: { display: datasets.length > 1 } } },
+    });
+  }
+
+  // Bateria é categórica (enum) — nunca vira gráfico numérico/percentual.
+  // Lista só as MUDANÇAS de estado no dia (não cada amostra repetida).
+  function _mudancasDeBateria(regs) {
+    const porEquip = {};
+    regs.slice().sort((a, b) => (a.criadoEm || 0) - (b.criadoEm || 0)).forEach(r => {
+      const b = r.dados?.telemetria?.bateria; if (!b) return;
+      const eqId = r.dados.leituras[0]?.equipamentoId; if (!eqId) return;
+      const lista = (porEquip[eqId] = porEquip[eqId] || []);
+      if (!lista.length || lista[lista.length - 1].estado !== b.estado) lista.push({ estado: b.estado, label: b.label, em: r.criadoEm });
+    });
+    return porEquip;
+  }
+
+  // "Sem atualização recente": o POLLER amostra a cada 5min (padrão do
+  // sistema) — 3x esse ritmo sem sincronizar é folga suficiente pra não
+  // alarmar por uma falha passageira, mas ainda pegar um sensor realmente
+  // parado. Nunca declara "offline" (depende do comportamento do
+  // dispositivo, não é algo que o servidor possa afirmar com certeza).
+  const LIMIAR_SEM_ATUALIZACAO_MS = 15 * 60 * 1000;
+  function _temTuya(e) { return !!(e.tuyaConfigurado || e.tuyaDeviceId); }
+  function _semAtualizacaoRecente(e) {
+    if (!_temTuya(e)) return false;
+    const sinc = e.tuyaTelemetry?.sincronizadoEm;
+    return !sinc || (Date.now() - sinc) > LIMIAR_SEM_ATUALIZACAO_MS;
+  }
+  function _foraDaFaixaAgora(e) {
+    const t = e.tuyaTelemetry?.probe;
+    if (!t || t.valorC == null) return false;
+    return (e.limiteMin != null && t.valorC < e.limiteMin) || (e.limiteMax != null && t.valorC > e.limiteMax);
+  }
+
+  function _cardEquipTemperatura(e, ult) {
+    const u = ult[e.id];
+    const tel = e.tuyaTelemetry;
+    const temTuya = _temTuya(e);
+    const faixa = (e.limiteMin != null || e.limiteMax != null) ? `${e.limiteMin ?? '-∞'} a ${e.limiteMax ?? '+∞'}°C` : 'sem limite';
+    const modoL = { manual: 'Manual', iot: 'IoT', ambos: 'Manual + IoT' };
+    // Sonda: prioriza telemetria Tuya "agora" (independe do dia filtrado);
+    // sem Tuya, cai pra última leitura manual do dia (comportamento de sempre).
+    const sondaValor = temTuya ? (tel?.probe?.valorC ?? null) : (u ? u.valor : null);
+    const sondaConforme = temTuya ? (tel?.probe ? !_foraDaFaixaAgora(e) : null) : (u ? u.conforme : null);
+    const chipSonda = sondaValor == null ? '<span class="chip aberta">sem leitura</span>' : (sondaConforme ? '<span class="chip ok">conforme</span>' : '<span class="chip atraso">não conforme</span>');
+    const corSonda = sondaValor == null ? 'var(--muted)' : (sondaConforme ? 'var(--ok)' : 'var(--danger)');
+    const auxGrid = temTuya ? `<div class="grid cols-2" style="margin-top:10px">
+        <div><div class="muted" style="font-size:.74rem">Ambiente</div><div style="font-weight:700">${tel?.ambiente ? esc(String(tel.ambiente.temperaturaC)) + '°C' : '—'}</div></div>
+        <div><div class="muted" style="font-size:.74rem">Umidade</div><div style="font-weight:700">${tel?.umidade ? esc(String(tel.umidade.valorPct)) + '%' : '—'}</div></div>
+      </div>
+      <div class="muted" style="font-size:.74rem;margin-top:8px">Bateria</div>
+      <div style="font-weight:700">${tel?.bateria ? esc(tel.bateria.label || tel.bateria.estado) : '—'}${tel?.bateria?.estado === 'low' ? ' <span class="chip atraso">bateria baixa</span>' : ''}</div>` : '';
+    const ultimaMedicao = temTuya ? (tel?.probe?.propertyTime ? _tempoRel(tel.probe.propertyTime) : null) : (u ? _tempoRel(u.em) : null);
+    const ultimaSinc = temTuya && tel?.sincronizadoEm ? _tempoRel(tel.sincronizadoEm) : null;
+    return `<div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+        <div><strong>${esc(e.nome)}</strong> <span class="chip neutral">${esc(CATEGORIAS_EQUIP[e.categoria] || e.categoria)}</span>
+          <div class="muted" style="font-size:.82rem;margin-top:2px">Faixa ${faixa} · ${modoL[e.modo] || e.modo}${e.freqPorDia ? ' · ' + e.freqPorDia + '×/dia' : ''}</div></div>
+        <div style="text-align:right;flex:none">
+          <div class="muted" style="font-size:.74rem">Sonda</div>
+          ${chipSonda}
+          <div style="font-size:1.5rem;font-weight:800;color:${corSonda}">${sondaValor != null ? esc(String(sondaValor)) + '°C' : '—'}</div>
+        </div>
+      </div>
+      ${auxGrid}
+      <div class="muted" style="font-size:.72rem;margin-top:10px">${ultimaMedicao ? 'Última medição da sonda: ' + ultimaMedicao : 'Sem leitura'}${ultimaSinc ? ' · Última sincronização: ' + ultimaSinc : ''}</div>
+    </div>`;
+  }
+
+  // ── Tela dedicada de Temperatura (dashboard central do contrato) ────
   let _tempDataSelecionada = new Date().toISOString().slice(0, 10);
   async function renderTemperatura() {
     const cid = getContratoAtual();
@@ -221,39 +300,68 @@
     if (!cid) return $('#tempBody').innerHTML = `<div class="empty"><strong>Escolha um contrato</strong>Selecione um contrato acima para ver a temperatura.</div>`;
     $('#tNovo').onclick = () => abrirTemperatura(cid);
     let eqs = [], regs = [];
+    // equipamentos: sempre o estado MAIS ATUAL (tuyaTelemetry independe do
+    // dia filtrado — é "agora"). registros: só do dia selecionado (nunca o
+    // histórico inteiro — mesma disciplina de banda de sempre).
     try { [eqs, regs] = await Promise.all([DB.getEquipamentos(cid), DB.getRegistrosPac(cid, 'pt-temperatura', { from: _tempDataSelecionada, to: _tempDataSelecionada })]); }
     catch (e) { return $('#tempBody').innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
     const ult = {};
     regs.forEach(r => (r.dados?.leituras || []).forEach(l => {
       if (!ult[l.equipamentoId] || (r.criadoEm || 0) > ult[l.equipamentoId].em) ult[l.equipamentoId] = { valor: l.valor, conforme: l.conforme, em: r.criadoEm || 0, origem: r.origem };
     }));
-    const modoL = { manual: 'Manual', iot: 'IoT', ambos: 'Manual + IoT' };
-    const cards = eqs.length ? eqs.map(e => {
-      const u = ult[e.id];
-      const faixa = (e.limiteMin != null || e.limiteMax != null) ? `${e.limiteMin ?? '-∞'} a ${e.limiteMax ?? '+∞'}°C` : 'sem limite';
-      const chip = u ? (u.conforme ? '<span class="chip ok">conforme</span>' : '<span class="chip atraso">não conforme</span>') : '<span class="chip aberta">sem leitura</span>';
-      return `<div class="card"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
-        <div><strong>${esc(e.nome)}</strong> <span class="chip neutral">${esc(CATEGORIAS_EQUIP[e.categoria] || e.categoria)}</span>
-          <div class="muted" style="font-size:.82rem;margin-top:2px">Faixa ${faixa} · ${modoL[e.modo] || e.modo}${e.freqPorDia ? ' · ' + e.freqPorDia + '×/dia' : ''}</div></div>
-        <div style="text-align:right;flex:none">${chip}
-          <div style="font-size:1.3rem;font-weight:800;color:${u ? (u.conforme ? 'var(--ok)' : 'var(--danger)') : 'var(--muted)'}">${u ? u.valor + '°C' : '—'}</div>
-          <div class="muted" style="font-size:.72rem">${u ? ((u.origem === 'iot' ? 'IoT · ' : 'Manual · ') + _tempoRel(u.em)) : 'sem leitura no dia'}</div></div>
-      </div></div>`;
-    }).join('') : `<div class="empty"><strong>Nenhum equipamento</strong>Cadastre câmaras/balcões/salas em Cadastro → Equipamentos.</div>`;
-    const temGrafico = regs.some(r => (r.dados?.leituras || []).length);
-    const grafico = temGrafico ? `<div class="card" style="height:280px"><canvas id="tempChart"></canvas></div>` : '';
+
+    // KPIs (estado ATUAL do contrato, independente do dia filtrado).
+    const sensoresTuya = eqs.filter(_temTuya);
+    const kpis = sensoresTuya.length ? `<div class="grid cols-4" style="margin-bottom:18px">
+      <div class="kpi"><div class="n">${sensoresTuya.length}</div><div class="lbl">Sensores monitorados</div></div>
+      <div class="kpi"><div class="n${sensoresTuya.some(_foraDaFaixaAgora) ? ' danger' : ''}">${sensoresTuya.filter(_foraDaFaixaAgora).length}</div><div class="lbl">Sondas fora da faixa</div></div>
+      <div class="kpi"><div class="n${sensoresTuya.some(e => e.tuyaTelemetry?.bateria?.estado === 'low') ? ' warn' : ''}">${sensoresTuya.filter(e => e.tuyaTelemetry?.bateria?.estado === 'low').length}</div><div class="lbl">Baterias baixas</div></div>
+      <div class="kpi"><div class="n${sensoresTuya.some(_semAtualizacaoRecente) ? ' warn' : ''}">${sensoresTuya.filter(_semAtualizacaoRecente).length}</div><div class="lbl">Sem atualização recente</div></div>
+    </div>` : '';
+
+    const cards = eqs.length ? eqs.map(e => _cardEquipTemperatura(e, ult)).join('') : `<div class="empty"><strong>Nenhum equipamento</strong>Cadastre câmaras/balcões/salas em Cadastro → Equipamentos.</div>`;
+
+    const temGraficoTemp = regs.some(r => (r.dados?.leituras || []).length || r.dados?.telemetria?.ambiente);
+    const temGraficoUmid = regs.some(r => r.dados?.telemetria?.umidade);
+    const graficos = (temGraficoTemp || temGraficoUmid) ? `<div class="grid cols-2">
+      ${temGraficoTemp ? `<div class="card" style="height:260px"><canvas id="tempChartTemp"></canvas></div>` : ''}
+      ${temGraficoUmid ? `<div class="card" style="height:260px"><canvas id="tempChartUmid"></canvas></div>` : ''}
+    </div>` : '';
+
+    const mudancasBateria = _mudancasDeBateria(regs);
+    const temMudancasBateria = Object.values(mudancasBateria).some(l => l.length);
+    const blocoBateria = temMudancasBateria ? `<div class="card">${eqs.filter(e => mudancasBateria[e.id]?.length).map(e => `
+      <div style="margin-bottom:8px"><strong style="font-size:.85rem">${esc(e.nome)}</strong>
+        <div class="muted" style="font-size:.78rem;margin-top:2px">${mudancasBateria[e.id].map(m => `${esc(m.label || m.estado)} (${new Date(m.em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })})`).join(' → ')}</div>
+      </div>`).join('')}</div>` : '';
+
     const lista = regs.length ? regs.slice(0, 30).map(r => {
       const conf = r.dados?.conformeGeral ? '<span class="chip ok">conforme</span>' : '<span class="chip atraso">não conforme</span>';
       const org = `<span class="chip neutral">${r.origem === 'iot' ? 'IoT' : 'Manual'}</span>`;
       const leit = (r.dados?.leituras || []).map(l => `${esc(l.nome)}: <b style="color:${l.conforme ? 'var(--ok)' : 'var(--danger)'}">${esc(l.valor)}°C</b>`).join(' · ');
+      const tel = r.dados?.telemetria;
+      const auxLinha = tel ? [
+        tel.ambiente ? `Ambiente: ${esc(String(tel.ambiente.temperaturaC))}°C` : null,
+        tel.umidade ? `Umidade: ${esc(String(tel.umidade.valorPct))}%` : null,
+        tel.bateria ? `Bateria: ${esc(tel.bateria.label || tel.bateria.estado)}` : null,
+      ].filter(Boolean).join(' · ') : '';
       return `<div class="card" style="box-shadow:none;border:1px solid var(--line)">
         <div style="display:flex;justify-content:space-between;align-items:center">${conf} ${org}<span class="muted" style="font-size:.76rem">${r.criadoEm ? new Date(r.criadoEm).toLocaleString('pt-BR') : ''}</span></div>
-        <div style="font-size:.85rem;margin-top:6px">${leit || '—'}</div></div>`;
+        <div style="font-size:.85rem;margin-top:6px">${leit || '—'}</div>
+        ${auxLinha ? `<div class="muted" style="font-size:.78rem;margin-top:4px">${auxLinha}</div>` : ''}</div>`;
     }).join('') : `<div class="empty"><strong>Sem leituras neste dia</strong>Escolha outra data ou lance a primeira em "Novo registro".</div>`;
-    $('#tempBody').innerHTML = `<div class="eyebrow" style="margin:6px 0 8px">Equipamentos</div>${cards}
-      ${grafico ? `<div class="eyebrow" style="margin:22px 0 8px">Gráfico do dia</div>${grafico}` : ''}
+
+    $('#tempBody').innerHTML = `${kpis}
+      <div class="eyebrow" style="margin:6px 0 8px">Equipamentos</div>${cards}
+      ${graficos ? `<div class="eyebrow" style="margin:22px 0 8px">Tendência do dia</div>${graficos}` : ''}
+      ${blocoBateria ? `<div class="eyebrow" style="margin:22px 0 8px">Mudanças de bateria no dia</div>${blocoBateria}` : ''}
       <div class="eyebrow" style="margin:22px 0 8px">Leituras do dia</div>${lista}`;
-    if (temGrafico) ensureChartJs().then(() => _renderGraficoTemperatura(eqs, regs)).catch(e => console.error('Chart.js:', e.message));
+    if (temGraficoTemp || temGraficoUmid) {
+      ensureChartJs().then(() => {
+        if (temGraficoTemp) _renderGraficoTemperaturas(eqs, regs);
+        if (temGraficoUmid) _renderGraficoUmidade(eqs, regs);
+      }).catch(e => console.error('Chart.js:', e.message));
+    }
   }
 
   // ══════════════════════════════════════════════════════════════

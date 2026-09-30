@@ -301,6 +301,11 @@
       const m = $('#eqModo').value;
       $('#eqTuyaBlock').style.display = (m === 'iot' || m === 'ambos') ? 'block' : 'none';
     };
+    // Telemetria auxiliar (ambiente/umidade/bateria): detectada junto da
+    // sonda em "Testar conexão" e ecoada no salvar como campo oculto —
+    // mesmo padrão já usado pra tuyaDpCode/tuyaEscala. Preserva o que já
+    // estava salvo até um novo teste confirmar/atualizar.
+    let auxDetectado = { tuyaAmbiente: (ed && e.tuyaAmbiente) || null, tuyaUmidade: (ed && e.tuyaUmidade) || null, tuyaBateria: (ed && e.tuyaBateria) || null };
     if (ed) {
       $('#eqTuyaTestar').onclick = async () => {
         $('#eqTuyaTestar').disabled = true;
@@ -314,12 +319,23 @@
           };
           const r = await DB.testarTuya(e.id, credenciais);
           const temps = r.temperaturas || [];
+          auxDetectado = {
+            tuyaAmbiente: r.ambiente ? { code: r.ambiente.code, scale: r.ambiente.scale, unit: r.ambiente.unit } : null,
+            tuyaUmidade: r.umidade ? { code: r.umidade.code, scale: r.umidade.scale } : null,
+            tuyaBateria: r.bateria ? { code: r.bateria.code } : null,
+          };
+          const auxLinhas = [
+            r.ambiente ? `Ambiente: ${r.ambiente.valorAtual}${esc(r.ambiente.unit || '')}` : null,
+            r.umidade ? `Umidade: ${r.umidade.valorAtual}%` : null,
+            r.bateria ? `Bateria: ${esc(r.bateria.label || r.bateria.estado || '—')}` : null,
+          ].filter(Boolean).join(' · ');
           if (!temps.length) {
             $('#eqTuyaResultado').innerHTML = '<p class="muted" style="font-size:.78rem">O sensor respondeu, mas não encontrei nenhuma temperatura nele.</p>';
           } else {
             const rotulo = (t) => t.code === 'temp_current_external' ? 'Temperatura externa (°C)' : (t.code === 'temp_current' ? 'Temperatura interna (°C)' : t.code);
             $('#eqTuyaResultado').innerHTML = `<p class="muted" style="font-size:.78rem">Escolha qual temperatura este equipamento deve acompanhar:</p>
-               <select id="eqTuyaDpEscolha">${temps.map(t => `<option value="${esc(t.code)}" data-escala="${t.escalaSugerida}">${esc(rotulo(t))} — ${t.valorCalibrado}${esc(t.unidade)} agora</option>`).join('')}</select>`;
+               <select id="eqTuyaDpEscolha">${temps.map(t => `<option value="${esc(t.code)}" data-escala="${t.escalaSugerida}">${esc(rotulo(t))} — ${t.valorCalibrado}${esc(t.unidade)} agora</option>`).join('')}</select>
+               ${auxLinhas ? `<p class="muted" style="font-size:.76rem;margin-top:6px">Telemetria detectada: ${auxLinhas}</p>` : ''}`;
             const aplicarEscolha = () => {
               const op = $('#eqTuyaDpEscolha').selectedOptions[0];
               $('#eqTuyaDpCode').value = op.value;
@@ -345,7 +361,8 @@
         estabelecimentoId: lerEstabelecimento('eqEst'),
         tuyaAccessId: $('#eqTuyaAccessId').value.trim(), tuyaAccessSecret: $('#eqTuyaAccessSecret').value,
         tuyaDeviceId: $('#eqTuyaDeviceId').value.trim(), tuyaRegiao: $('#eqTuyaRegiao').value,
-        tuyaDpCode: $('#eqTuyaDpCode').value.trim(), tuyaEscala: $('#eqTuyaEscala').value };
+        tuyaDpCode: $('#eqTuyaDpCode').value.trim(), tuyaEscala: $('#eqTuyaEscala').value,
+        tuyaAmbiente: auxDetectado.tuyaAmbiente, tuyaUmidade: auxDetectado.tuyaUmidade, tuyaBateria: auxDetectado.tuyaBateria };
       if (ed) payload.id = e.id;
       try { await DB.saveEquipamento(cid, payload); closeModal(); toast('Equipamento salvo.'); cadEquipamentos(); }
       catch (err) { toast(err.message, true); }

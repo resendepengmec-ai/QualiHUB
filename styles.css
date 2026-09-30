@@ -109,7 +109,8 @@ code, .mono { font-family: var(--mono); font-size: .82em; }
 .card.spine.s-aberta::before  { background: var(--primary); }
 
 .grid { display: grid; gap: 12px; }
-@media (min-width: 720px) { .grid.cols-3 { grid-template-columns: repeat(3, 1fr); } .grid.cols-2 { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 720px) { .grid.cols-3 { grid-template-columns: repeat(3, 1fr); } .grid.cols-2 { grid-template-columns: repeat(2, 1fr); } .grid.cols-4 { grid-template-columns: repeat(4, 1fr); } }
+@media (min-width: 480px) and (max-width: 719px) { .grid.cols-4 { grid-template-columns: repeat(2, 1fr); } }
 
 /* KPI */
 .kpi { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; box-shadow: var(--shadow); }
