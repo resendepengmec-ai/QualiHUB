@@ -51,14 +51,24 @@ function downloadBlob(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 
-// Prefere a Web Share API (nível 2, com arquivos) quando o navegador suporta
-// compartilhar ESTE arquivo — é o que dá ao iOS a folha de compartilhamento
-// nativa com "Salvar em Arquivos"/AirDrop/etc, porque baixar um Blob direto
-// no Safari iOS nem sempre oferece uma forma de salvar de fato. Cai para
-// downloadBlob() em qualquer outro caso (desktop, Android sem share, erro,
-// ou usuário cancelando o share não é tratado como erro).
+// Chrome/Edge no Windows também implementam a Web Share API (nível 2) —
+// sem essa checagem, o "Salvar" no desktop abria a folha de compartilhamento
+// do Windows em vez de simplesmente baixar pra pasta Downloads, como
+// qualquer download normal do navegador já faz sozinho.
+function _ehMobile() {
+  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); // iPadOS 13+ se identifica como Mac
+}
+
+// Prefere a Web Share API (nível 2, com arquivos), só em MOBILE, quando o
+// navegador suporta compartilhar ESTE arquivo — é o que dá ao iOS a folha de
+// compartilhamento nativa com "Salvar em Arquivos"/AirDrop/etc, porque
+// baixar um Blob direto no Safari iOS nem sempre oferece uma forma de salvar
+// de fato. Cai para downloadBlob() em qualquer outro caso (desktop sempre,
+// Android sem share, erro, ou usuário cancelando o share não é tratado como
+// erro) — no desktop isso baixa direto pra Downloads, sem diálogo nenhum.
 async function openOrShareFile(blob, filename, mime) {
-  if (navigator.canShare && navigator.share) {
+  if (_ehMobile() && navigator.canShare && navigator.share) {
     try {
       const file = new File([blob], filename, { type: mime || blob.type });
       if (navigator.canShare({ files: [file] })) {
