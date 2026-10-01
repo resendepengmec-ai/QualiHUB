@@ -293,7 +293,7 @@
         <button class="btn ghost sm" type="button" id="eqTuyaTestar">Testar conexão</button><div id="eqTuyaResultado" style="margin-top:8px"></div>
         <div class="row" style="margin-top:8px"><label class="field"><span>Data point (código)</span><input id="eqTuyaDpCode" value="${ed ? esc(e.tuyaDpCode || '') : ''}" placeholder="Ex.: temp_current_external"></label>
           <label class="field"><span>Escala (divisor)</span><input id="eqTuyaEscala" type="number" step="any" value="${ed && e.tuyaEscala != null ? e.tuyaEscala : 10}"></label></div>
-        <p class="muted" style="font-size:.74rem;margin-top:6px">O sensor é consultado a cada 5 min (padrão do sistema); o que vira registro de temperatura segue a "Frequência (medições por dia)" acima — cada registro é a MÉDIA das leituras de 5 min coletadas no intervalo correspondente.</p>
+        <p class="muted" style="font-size:.74rem;margin-top:6px">O sensor é consultado a cada 15 min (padrão do sistema) — um registro novo só é criado quando o sensor realmente reportar uma medição nova, nunca a cada consulta. "Frequência (medições por dia)" acima é só informativa, não afeta o sensor Tuya.</p>
       </div>
       <div class="actions"><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="eqOk">Salvar</button></div>`);
     $('#eqModo').onchange = () => {
