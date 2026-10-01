@@ -242,6 +242,7 @@ const DB = {
   regenerarTokenEquip:    (id)      => API.post(`/equipamentos/${id}/regenerar-token`, {}),
   testarTuya:             (id, credenciais) => API.post(`/equipamentos/${id}/tuya/testar`, { credenciais }),
   testarTuyaContrato:     (cid, credenciais) => API.post(`/contratos/${cid}/tuya/testar`, { credenciais }),
+  sincronizarTuyaAgora:   (id)      => API.post(`/equipamentos/${id}/tuya/sincronizar`, {}),
   criarTemperatura:       (contratoId, leituras) => API.post('/pac/temperatura', { contratoId, leituras }),
 
   // Documentos sanitários

@@ -236,6 +236,23 @@
       if (!confirm('Regerar o token? O sensor precisará ser reconfigurado com o novo token.')) return;
       try { await DB.regenerarTokenEquip(b.dataset.regen); toast('Token regerado.'); cadEquipamentos(); } catch (e) { toast(e.message, true); }
     });
+    // "Sincronizar agora": consulta a Tuya na hora, fora do ciclo
+    // automático de 15min — reaproveita a mesma dedup por property.time do
+    // poller, então clicar várias vezes não duplica nada no P.A.C.
+    body.querySelectorAll('[data-sync]').forEach(b => b.onclick = async () => {
+      const msgEl = document.getElementById('sync-msg-' + b.dataset.sync);
+      b.disabled = true; if (msgEl) msgEl.textContent = 'Consultando…';
+      try {
+        const r = await DB.sincronizarTuyaAgora(b.dataset.sync);
+        if (msgEl) msgEl.textContent = r.novo ? `Leitura nova: ${r.valor}°C` : 'Sensor sem leitura nova desde a última consulta.';
+        toast(r.novo ? 'Sincronizado — leitura nova registrada.' : 'Sincronizado — sem leitura nova do sensor.');
+        cadEquipamentos();
+      } catch (e) {
+        if (msgEl) msgEl.textContent = '';
+        toast(e.message, true);
+        b.disabled = false;
+      }
+    });
   }
 
   function cardEquip(e, cid) {
@@ -262,6 +279,8 @@
           ${e.tuyaDeviceId ? `<div class="muted" style="margin-top:8px;padding-top:8px;border-top:1px solid var(--line)">
             <b>Sensor Tuya:</b> ${e.tuyaUltimaLeituraEm ? `última leitura ${new Date(e.tuyaUltimaLeituraEm).toLocaleString('pt-BR')}` : 'ainda sem leitura'}
             ${e.tuyaUltimoErro ? `<br><span class="chip atraso">Erro em ${new Date(e.tuyaUltimoErro.em).toLocaleString('pt-BR')}: ${esc(e.tuyaUltimoErro.msg)}</span>` : ''}
+            <div style="margin-top:6px"><button class="btn ghost sm" data-sync="${e.id}">Sincronizar agora</button>
+              <span class="muted" id="sync-msg-${e.id}" style="margin-left:6px"></span></div>
           </div>` : ''}
         </div></div>` : ''}
     </div>`;
