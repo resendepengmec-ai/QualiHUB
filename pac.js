@@ -249,6 +249,22 @@
     return (e.limiteMin != null && t.valorC < e.limiteMin) || (e.limiteMax != null && t.valorC > e.limiteMax);
   }
 
+  // Escala visual da temperatura da sonda, entre o limite mínimo e máximo
+  // cadastrados — gradiente azul (frio/limite inferior) a vermelho
+  // (quente/limite superior), com um marcador na posição do valor atual.
+  // Só aparece quando os DOIS limites estão definidos (sem os dois não dá
+  // pra desenhar uma escala com sentido); fora dos dois casos cai pro
+  // número simples de sempre.
+  function _escalaTemperatura(valor, min, max) {
+    if (valor == null || min == null || max == null || max <= min) return '';
+    const pct = Math.max(0, Math.min(100, ((valor - min) / (max - min)) * 100));
+    const fora = valor < min || valor > max;
+    return `<div class="temp-gauge" style="margin-top:8px">
+      <div class="temp-gauge-track"><div class="temp-gauge-marker${fora ? ' fora' : ''}" style="left:${pct}%"></div></div>
+      <div class="temp-gauge-labels"><span>${esc(String(min))}°C</span><span>${esc(String(max))}°C</span></div>
+    </div>`;
+  }
+
   function _cardEquipTemperatura(e, ult) {
     const u = ult[e.id];
     const tel = e.tuyaTelemetry;
@@ -261,11 +277,15 @@
     const sondaConforme = temTuya ? (tel?.probe ? !_foraDaFaixaAgora(e) : null) : (u ? u.conforme : null);
     const chipSonda = sondaValor == null ? '<span class="chip aberta">sem leitura</span>' : (sondaConforme ? '<span class="chip ok">conforme</span>' : '<span class="chip atraso">não conforme</span>');
     const corSonda = sondaValor == null ? 'var(--muted)' : (sondaConforme ? 'var(--ok)' : 'var(--danger)');
+    // Nomenclatura (sensor com sonda externa + módulo incorporado):
+    // "Temperatura sonda" é o ponto controlado (ex.: dentro da câmara);
+    // "Temperatura ambiente"/"Umidade ambiente" vêm do sensor do próprio
+    // módulo, onde ele está instalado — não é o ambiente controlado.
     const auxGrid = temTuya ? `<div class="grid cols-2" style="margin-top:10px">
-        <div><div class="muted" style="font-size:.74rem">Ambiente</div><div style="font-weight:700">${tel?.ambiente ? esc(String(tel.ambiente.temperaturaC)) + '°C' : '—'}</div></div>
-        <div><div class="muted" style="font-size:.74rem">Umidade</div><div style="font-weight:700">${tel?.umidade ? esc(String(tel.umidade.valorPct)) + '%' : '—'}</div></div>
+        <div><div class="muted" style="font-size:.74rem">Temperatura ambiente</div><div style="font-weight:700">${tel?.ambiente ? esc(String(tel.ambiente.temperaturaC)) + '°C' : '—'}</div></div>
+        <div><div class="muted" style="font-size:.74rem">Umidade ambiente</div><div style="font-weight:700">${tel?.umidade ? esc(String(tel.umidade.valorPct)) + '%' : '—'}</div></div>
       </div>
-      <div class="muted" style="font-size:.74rem;margin-top:8px">Bateria</div>
+      <div class="muted" style="font-size:.74rem;margin-top:8px">Tensão da bateria</div>
       <div style="font-weight:700">${tel?.bateria ? esc(tel.bateria.label || tel.bateria.estado) : '—'}${tel?.bateria?.estado === 'low' ? ' <span class="chip atraso">bateria baixa</span>' : ''}</div>` : '';
     const ultimaMedicao = temTuya ? (tel?.probe?.propertyTime ? _tempoRel(tel.probe.propertyTime) : null) : (u ? _tempoRel(u.em) : null);
     const ultimaSinc = temTuya && tel?.sincronizadoEm ? _tempoRel(tel.sincronizadoEm) : null;
@@ -274,11 +294,12 @@
         <div><strong>${esc(e.nome)}</strong> <span class="chip neutral">${esc(CATEGORIAS_EQUIP[e.categoria] || e.categoria)}</span>
           <div class="muted" style="font-size:.82rem;margin-top:2px">Faixa ${faixa} · ${modoL[e.modo] || e.modo}${e.freqPorDia ? ' · ' + e.freqPorDia + '×/dia' : ''}</div></div>
         <div style="text-align:right;flex:none">
-          <div class="muted" style="font-size:.74rem">Sonda</div>
+          <div class="muted" style="font-size:.74rem">Temperatura sonda</div>
           ${chipSonda}
           <div style="font-size:1.5rem;font-weight:800;color:${corSonda}">${sondaValor != null ? esc(String(sondaValor)) + '°C' : '—'}</div>
         </div>
       </div>
+      ${_escalaTemperatura(sondaValor, e.limiteMin, e.limiteMax)}
       ${auxGrid}
       <div class="muted" style="font-size:.72rem;margin-top:10px">${ultimaMedicao ? 'Última medição da sonda: ' + ultimaMedicao : 'Sem leitura'}${ultimaSinc ? ' · Última sincronização: ' + ultimaSinc : ''}</div>
     </div>`;
@@ -341,9 +362,9 @@
       const leit = (r.dados?.leituras || []).map(l => `${esc(l.nome)}: <b style="color:${l.conforme ? 'var(--ok)' : 'var(--danger)'}">${esc(l.valor)}°C</b>`).join(' · ');
       const tel = r.dados?.telemetria;
       const auxLinha = tel ? [
-        tel.ambiente ? `Ambiente: ${esc(String(tel.ambiente.temperaturaC))}°C` : null,
-        tel.umidade ? `Umidade: ${esc(String(tel.umidade.valorPct))}%` : null,
-        tel.bateria ? `Bateria: ${esc(tel.bateria.label || tel.bateria.estado)}` : null,
+        tel.ambiente ? `Temperatura ambiente: ${esc(String(tel.ambiente.temperaturaC))}°C` : null,
+        tel.umidade ? `Umidade ambiente: ${esc(String(tel.umidade.valorPct))}%` : null,
+        tel.bateria ? `Tensão da bateria: ${esc(tel.bateria.label || tel.bateria.estado)}` : null,
       ].filter(Boolean).join(' · ') : '';
       return `<div class="card" style="box-shadow:none;border:1px solid var(--line)">
         <div style="display:flex;justify-content:space-between;align-items:center">${conf} ${org}<span class="muted" style="font-size:.76rem">${r.criadoEm ? new Date(r.criadoEm).toLocaleString('pt-BR') : ''}</span></div>

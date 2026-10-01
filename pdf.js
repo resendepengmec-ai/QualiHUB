@@ -119,9 +119,9 @@
           // conformidade, que continua baseada só na sonda (dd.leituras acima).
           const tel = dd.telemetria;
           if (tel) {
-            if (tel.ambiente) l.push(`Ambiente: ${tel.ambiente.temperaturaC}°C`);
-            if (tel.umidade) l.push(`Umidade: ${tel.umidade.valorPct}%`);
-            if (tel.bateria) l.push(`Bateria: ${tel.bateria.label || tel.bateria.estado}`);
+            if (tel.ambiente) l.push(`Temperatura ambiente: ${tel.ambiente.temperaturaC}°C`);
+            if (tel.umidade) l.push(`Umidade ambiente: ${tel.umidade.valorPct}%`);
+            if (tel.bateria) l.push(`Tensão da bateria: ${tel.bateria.label || tel.bateria.estado}`);
           }
           return l.join('\n');
         }

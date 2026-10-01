@@ -290,8 +290,7 @@
           <label class="field"><span>Access Secret</span><input id="eqTuyaAccessSecret" value="${ed ? esc(e.tuyaAccessSecret || '') : ''}"></label></div>
         <div class="row"><label class="field"><span>Device ID</span><input id="eqTuyaDeviceId" value="${ed ? esc(e.tuyaDeviceId || '') : ''}"></label>
           <label class="field"><span>Região</span><select id="eqTuyaRegiao">${regioes}</select></label></div>
-        ${ed ? `<button class="btn ghost sm" type="button" id="eqTuyaTestar">Testar conexão</button><div id="eqTuyaResultado" style="margin-top:8px"></div>`
-             : `<p class="muted" style="font-size:.76rem">Salve o equipamento uma vez antes de testar a conexão com o sensor.</p>`}
+        <button class="btn ghost sm" type="button" id="eqTuyaTestar">Testar conexão</button><div id="eqTuyaResultado" style="margin-top:8px"></div>
         <div class="row" style="margin-top:8px"><label class="field"><span>Data point (código)</span><input id="eqTuyaDpCode" value="${ed ? esc(e.tuyaDpCode || '') : ''}" placeholder="Ex.: temp_current_external"></label>
           <label class="field"><span>Escala (divisor)</span><input id="eqTuyaEscala" type="number" step="any" value="${ed && e.tuyaEscala != null ? e.tuyaEscala : 10}"></label></div>
         <p class="muted" style="font-size:.74rem;margin-top:6px">O sensor é consultado a cada 5 min (padrão do sistema); o que vira registro de temperatura segue a "Frequência (medições por dia)" acima — cada registro é a MÉDIA das leituras de 5 min coletadas no intervalo correspondente.</p>
@@ -306,54 +305,59 @@
     // mesmo padrão já usado pra tuyaDpCode/tuyaEscala. Preserva o que já
     // estava salvo até um novo teste confirmar/atualizar.
     let auxDetectado = { tuyaAmbiente: (ed && e.tuyaAmbiente) || null, tuyaUmidade: (ed && e.tuyaUmidade) || null, tuyaBateria: (ed && e.tuyaBateria) || null };
-    if (ed) {
-      $('#eqTuyaTestar').onclick = async () => {
-        $('#eqTuyaTestar').disabled = true;
-        $('#eqTuyaResultado').innerHTML = '<p class="muted" style="font-size:.78rem">Testando…</p>';
-        try {
-          const credenciais = {
-            tuyaAccessId: $('#eqTuyaAccessId').value.trim(),
-            tuyaAccessSecret: $('#eqTuyaAccessSecret').value,
-            tuyaDeviceId: $('#eqTuyaDeviceId').value.trim(),
-            tuyaRegiao: $('#eqTuyaRegiao').value,
+    $('#eqTuyaTestar').onclick = async () => {
+      $('#eqTuyaTestar').disabled = true;
+      $('#eqTuyaResultado').innerHTML = '<p class="muted" style="font-size:.78rem">Testando…</p>';
+      try {
+        const credenciais = {
+          tuyaAccessId: $('#eqTuyaAccessId').value.trim(),
+          tuyaAccessSecret: $('#eqTuyaAccessSecret').value,
+          tuyaDeviceId: $('#eqTuyaDeviceId').value.trim(),
+          tuyaRegiao: $('#eqTuyaRegiao').value,
+        };
+        // Equipamento já existe → testa no seu próprio id (pode usar
+        // credencial já salva se o campo ficar em branco). Equipamento
+        // NOVO (ainda sem id) → testa pelo contrato, sem precisar salvar
+        // um rascunho só pra poder testar o sensor.
+        const r = ed ? await DB.testarTuya(e.id, credenciais) : await DB.testarTuyaContrato(cid, credenciais);
+        const temps = r.temperaturas || [];
+        auxDetectado = {
+          tuyaAmbiente: r.ambiente ? { code: r.ambiente.code, scale: r.ambiente.scale, unit: r.ambiente.unit } : null,
+          tuyaUmidade: r.umidade ? { code: r.umidade.code, scale: r.umidade.scale } : null,
+          tuyaBateria: r.bateria ? { code: r.bateria.code } : null,
+        };
+        const auxLinhas = [
+          r.ambiente ? `Temperatura ambiente: ${r.ambiente.valorAtual}${esc(r.ambiente.unit || '')}` : null,
+          r.umidade ? `Umidade ambiente: ${r.umidade.valorAtual}%` : null,
+          r.bateria ? `Tensão da bateria: ${esc(r.bateria.label || r.bateria.estado || '—')}` : null,
+        ].filter(Boolean).join(' · ');
+        if (!temps.length) {
+          $('#eqTuyaResultado').innerHTML = '<p class="muted" style="font-size:.78rem">O sensor respondeu, mas não encontrei nenhuma temperatura nele.</p>';
+        } else {
+          // Nomenclatura: a sonda externa é o ponto de medição controlado
+          // (ex.: dentro da câmara fria); o sensor interno do próprio
+          // módulo mede a temperatura do AMBIENTE onde o módulo está.
+          const rotulo = (t) => t.code === 'temp_current_external' ? 'Temperatura sonda (°C)' : (t.code === 'temp_current' ? 'Temperatura ambiente (°C)' : t.code);
+          $('#eqTuyaResultado').innerHTML = `<p class="muted" style="font-size:.78rem">Escolha qual temperatura este equipamento deve acompanhar:</p>
+             <select id="eqTuyaDpEscolha">${temps.map(t => `<option value="${esc(t.code)}" data-escala="${t.escalaSugerida}">${esc(rotulo(t))} — ${t.valorCalibrado}${esc(t.unidade)} agora</option>`).join('')}</select>
+             ${auxLinhas ? `<p class="muted" style="font-size:.76rem;margin-top:6px">Telemetria detectada: ${auxLinhas}</p>` : ''}`;
+          const aplicarEscolha = () => {
+            const op = $('#eqTuyaDpEscolha').selectedOptions[0];
+            $('#eqTuyaDpCode').value = op.value;
+            $('#eqTuyaEscala').value = op.dataset.escala;
           };
-          const r = await DB.testarTuya(e.id, credenciais);
-          const temps = r.temperaturas || [];
-          auxDetectado = {
-            tuyaAmbiente: r.ambiente ? { code: r.ambiente.code, scale: r.ambiente.scale, unit: r.ambiente.unit } : null,
-            tuyaUmidade: r.umidade ? { code: r.umidade.code, scale: r.umidade.scale } : null,
-            tuyaBateria: r.bateria ? { code: r.bateria.code } : null,
-          };
-          const auxLinhas = [
-            r.ambiente ? `Ambiente: ${r.ambiente.valorAtual}${esc(r.ambiente.unit || '')}` : null,
-            r.umidade ? `Umidade: ${r.umidade.valorAtual}%` : null,
-            r.bateria ? `Bateria: ${esc(r.bateria.label || r.bateria.estado || '—')}` : null,
-          ].filter(Boolean).join(' · ');
-          if (!temps.length) {
-            $('#eqTuyaResultado').innerHTML = '<p class="muted" style="font-size:.78rem">O sensor respondeu, mas não encontrei nenhuma temperatura nele.</p>';
-          } else {
-            const rotulo = (t) => t.code === 'temp_current_external' ? 'Temperatura externa (°C)' : (t.code === 'temp_current' ? 'Temperatura interna (°C)' : t.code);
-            $('#eqTuyaResultado').innerHTML = `<p class="muted" style="font-size:.78rem">Escolha qual temperatura este equipamento deve acompanhar:</p>
-               <select id="eqTuyaDpEscolha">${temps.map(t => `<option value="${esc(t.code)}" data-escala="${t.escalaSugerida}">${esc(rotulo(t))} — ${t.valorCalibrado}${esc(t.unidade)} agora</option>`).join('')}</select>
-               ${auxLinhas ? `<p class="muted" style="font-size:.76rem;margin-top:6px">Telemetria detectada: ${auxLinhas}</p>` : ''}`;
-            const aplicarEscolha = () => {
-              const op = $('#eqTuyaDpEscolha').selectedOptions[0];
-              $('#eqTuyaDpCode').value = op.value;
-              $('#eqTuyaEscala').value = op.dataset.escala;
-            };
-            $('#eqTuyaDpEscolha').onchange = aplicarEscolha;
-            // Pré-seleciona a sonda externa quando existir (senão, a primeira
-            // da lista) — escala já vem preenchida sozinha, sem precisar digitar.
-            const idxExterna = temps.findIndex(t => t.code === 'temp_current_external');
-            $('#eqTuyaDpEscolha').selectedIndex = idxExterna >= 0 ? idxExterna : 0;
-            aplicarEscolha();
-          }
-        } catch (err) {
-          $('#eqTuyaResultado').innerHTML = `<p class="chip atraso" style="display:inline-block">${esc(err.message)}</p>`;
+          $('#eqTuyaDpEscolha').onchange = aplicarEscolha;
+          // Pré-seleciona a sonda externa quando existir (senão, a primeira
+          // da lista) — escala já vem preenchida sozinha, sem precisar digitar.
+          const idxExterna = temps.findIndex(t => t.code === 'temp_current_external');
+          $('#eqTuyaDpEscolha').selectedIndex = idxExterna >= 0 ? idxExterna : 0;
+          aplicarEscolha();
         }
-        $('#eqTuyaTestar').disabled = false;
-      };
-    }
+      } catch (err) {
+        $('#eqTuyaResultado').innerHTML = `<p class="chip atraso" style="display:inline-block">${esc(err.message)}</p>`;
+      }
+      $('#eqTuyaTestar').disabled = false;
+    };
     $('#eqOk').onclick = async () => {
       const nome = $('#eqNome').value.trim(); if (!nome) return toast('Informe o nome.', true);
       const payload = { nome, categoria: $('#eqCat').value, limiteMin: $('#eqMin').value, limiteMax: $('#eqMax').value,

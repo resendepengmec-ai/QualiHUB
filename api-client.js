@@ -241,6 +241,7 @@ const DB = {
   removeEquipamento:      (id)      => API.delete(`/equipamentos/${id}`),
   regenerarTokenEquip:    (id)      => API.post(`/equipamentos/${id}/regenerar-token`, {}),
   testarTuya:             (id, credenciais) => API.post(`/equipamentos/${id}/tuya/testar`, { credenciais }),
+  testarTuyaContrato:     (cid, credenciais) => API.post(`/contratos/${cid}/tuya/testar`, { credenciais }),
   criarTemperatura:       (contratoId, leituras) => API.post('/pac/temperatura', { contratoId, leituras }),
 
   // Documentos sanitários

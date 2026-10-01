@@ -118,6 +118,17 @@ code, .mono { font-family: var(--mono); font-size: .82em; }
 .kpi .n.warn { color: var(--warn); } .kpi .n.danger { color: var(--danger); } .kpi .n.ok { color: var(--ok); }
 .kpi .lbl { font-size: .78rem; color: var(--muted); margin-top: 2px; }
 
+/* escala visual de temperatura (dashboard de Temperatura) — gradiente
+   azul (limite mínimo) a vermelho (limite máximo), marcador na posição
+   do valor atual. */
+.temp-gauge-track { position: relative; height: 10px; border-radius: 6px;
+  background: linear-gradient(to right, #2E6FC4, #C77A1A 55%, #C4442E); }
+.temp-gauge-marker { position: absolute; top: -3px; width: 4px; height: 16px;
+  background: var(--ink); border-radius: 2px; transform: translateX(-50%);
+  box-shadow: 0 0 0 2px #fff; }
+.temp-gauge-marker.fora { background: var(--danger); }
+.temp-gauge-labels { display: flex; justify-content: space-between; font-size: .68rem; color: var(--muted); margin-top: 3px; }
+
 /* chips / badges */
 .chip { display: inline-flex; align-items: center; gap: 6px; font-size: .72rem; font-weight: 700;
   padding: 3px 9px; border-radius: 999px; border: 1px solid transparent; }
