@@ -243,7 +243,10 @@ const DB = {
   testarTuya:             (id, credenciais) => API.post(`/equipamentos/${id}/tuya/testar`, { credenciais }),
   testarTuyaContrato:     (cid, credenciais) => API.post(`/contratos/${cid}/tuya/testar`, { credenciais }),
   sincronizarTuyaAgora:   (id)      => API.post(`/equipamentos/${id}/tuya/sincronizar`, {}),
+  desativarSensor:        (id)      => API.post(`/equipamentos/${id}/sensor/desativar`, {}),
+  reativarSensor:         (id)      => API.post(`/equipamentos/${id}/sensor/reativar`, {}),
   criarTemperatura:       (contratoId, leituras) => API.post('/pac/temperatura', { contratoId, leituras }),
+  getRelatorioTemperatura: (cid, { from, to, equipamentos } = {}) => { const p = new URLSearchParams(); if (from) p.set('from', from); if (to) p.set('to', to); if (equipamentos?.length) p.set('equipamentos', equipamentos.join(',')); const q = p.toString(); return API.get(`/contratos/${cid}/temperatura/relatorio` + (q ? `?${q}` : '')); },
 
   // Documentos sanitários
   getDocumentos:          (cid)     => API.get(`/contratos/${cid}/documentos`),

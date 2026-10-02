@@ -128,10 +128,10 @@
   // Lançamento de temperatura dirigido pelos equipamentos cadastrados.
   async function abrirTemperatura(cid) {
     let eqs;
-    try { eqs = (await DB.getEquipamentos(cid)).filter(e => e.ativo !== false && (e.modo === 'manual' || e.modo === 'ambos')); }
+    try { eqs = (await DB.getEquipamentos(cid)).filter(e => e.ativo !== false && e.modo === 'manual'); }
     catch (e) { return toast(e.message, true); }
     if (!eqs.length) return openModal(`<h2>Controle de temperatura</h2>
-      <div class="empty"><strong>Nenhum equipamento para medição manual</strong>Cadastre câmaras/balcões/salas em Cadastro → Equipamentos (forma de medição Manual ou Manual + IoT).</div>
+      <div class="empty"><strong>Nenhum equipamento para medição manual</strong>Cadastre câmaras/balcões/salas em Cadastro → Equipamentos (forma de medição Manual) ou desative o sensor de um equipamento IoT por manutenção.</div>
       <div class="actions"><button class="btn primary" onclick="closeModal()">Entendi</button></div>`);
     openModal(`<div class="eyebrow">Data e hora automáticas do registro</div><h2>Controle de temperatura</h2>
       <p class="muted" style="font-size:.82rem;margin:.2rem 0 1rem">Informe a temperatura de cada ponto. A conformidade é calculada pelos limites do cadastro.</p>
@@ -174,49 +174,11 @@
     return _chartLoad;
   }
 
-  const _CORES_EQUIP = ['#45912E', '#C4442E', '#C77A1A', '#2E6620', '#6B7A73', '#2E9E6B'];
-  const _EIXO_TEMPO = { type: 'linear', ticks: { callback: (v) => new Date(v).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) } };
-
-  // Sonda + Ambiente no MESMO gráfico (mesma unidade, °C) — sonda em linha
-  // sólida, ambiente tracejada, nunca misturado com umidade (eixo
-  // incompatível, gráfico à parte logo abaixo).
-  let _tempChartTemp = null;
-  function _renderGraficoTemperaturas(eqs, regs) {
-    const datasets = [];
-    eqs.forEach((e, i) => {
-      const cor = _CORES_EQUIP[i % _CORES_EQUIP.length];
-      const sonda = regs.map(r => { const l = (r.dados?.leituras || []).find(x => x.equipamentoId === e.id); return l ? { x: r.criadoEm || 0, y: l.valor } : null; })
-        .filter(Boolean).sort((a, b) => a.x - b.x);
-      if (sonda.length) datasets.push({ label: e.nome + ' · sonda', data: sonda, borderColor: cor, backgroundColor: cor, tension: 0.25, pointRadius: 2.5, borderWidth: 2 });
-      const ambiente = regs.map(r => { const t = r.dados?.telemetria?.ambiente; return (t && t.temperaturaC != null) ? { x: r.criadoEm || 0, y: t.temperaturaC } : null; })
-        .filter(Boolean).sort((a, b) => a.x - b.x);
-      if (ambiente.length) datasets.push({ label: e.nome + ' · ambiente', data: ambiente, borderColor: cor, backgroundColor: cor, borderDash: [5, 4], tension: 0.25, pointRadius: 2, borderWidth: 1.5 });
-    });
-    if (_tempChartTemp) { _tempChartTemp.destroy(); _tempChartTemp = null; }
-    const canvas = $('#tempChartTemp');
-    if (!canvas || !datasets.length) return;
-    _tempChartTemp = new Chart(canvas.getContext('2d'), {
-      type: 'line', data: { datasets },
-      options: { responsive: true, maintainAspectRatio: false, scales: { x: _EIXO_TEMPO, y: { title: { display: true, text: '°C' } } }, plugins: { legend: { display: true } } },
-    });
-  }
-
-  // Umidade em gráfico PRÓPRIO — eixo % nunca compartilhado com temperatura.
-  let _tempChartUmid = null;
-  function _renderGraficoUmidade(eqs, regs) {
-    const datasets = eqs.map((e, i) => {
-      const pontos = regs.map(r => { const t = r.dados?.telemetria?.umidade; return (t && t.valorPct != null) ? { x: r.criadoEm || 0, y: t.valorPct } : null; })
-        .filter(Boolean).sort((a, b) => a.x - b.x);
-      return pontos.length ? { label: e.nome, data: pontos, borderColor: _CORES_EQUIP[i % _CORES_EQUIP.length], backgroundColor: _CORES_EQUIP[i % _CORES_EQUIP.length], tension: 0.25, pointRadius: 2.5, borderWidth: 2 } : null;
-    }).filter(Boolean);
-    if (_tempChartUmid) { _tempChartUmid.destroy(); _tempChartUmid = null; }
-    const canvas = $('#tempChartUmid');
-    if (!canvas || !datasets.length) return;
-    _tempChartUmid = new Chart(canvas.getContext('2d'), {
-      type: 'line', data: { datasets },
-      options: { responsive: true, maintainAspectRatio: false, scales: { x: _EIXO_TEMPO, y: { title: { display: true, text: '%' }, min: 0, max: 100 } }, plugins: { legend: { display: datasets.length > 1 } } },
-    });
-  }
+  // Identidade visual determinística por equipamento (cor+traço+marcador,
+  // nunca por posição no array) e os renderizadores de gráfico moram em
+  // temperature-chart.js (window.TemperaturaChart) — reaproveitados
+  // também pelo gerador de PDF dedicado (pdf.js), garantindo a MESMA
+  // identidade visual nos dois lugares.
 
   // Bateria é categórica (enum) — nunca vira gráfico numérico/percentual.
   // Lista só as MUDANÇAS de estado no dia (não cada amostra repetida).
@@ -237,7 +199,11 @@
   // parado. Nunca declara "offline" (depende do comportamento do
   // dispositivo, não é algo que o servidor possa afirmar com certeza).
   const LIMIAR_SEM_ATUALIZACAO_MS = 15 * 60 * 1000;
-  function _temTuya(e) { return !!(e.tuyaConfigurado || e.tuyaDeviceId); }
+  // IoT Tuya ATIVO: precisa estar em modo 'iot' E com o sensor ligado — um
+  // equipamento desativado por manutenção preserva as credenciais Tuya
+  // (pra poder reativar depois), mas não deve mais aparecer como "sensor
+  // monitorado" nem mostrar telemetria ao vivo enquanto está em manual.
+  function _temTuya(e) { return e.modo === 'iot' && e.sensorAtivo !== false && !!(e.tuyaConfigurado || e.tuyaDeviceId); }
   function _semAtualizacaoRecente(e) {
     if (!_temTuya(e)) return false;
     const sinc = e.tuyaTelemetry?.sincronizadoEm;
@@ -270,7 +236,7 @@
     const tel = e.tuyaTelemetry;
     const temTuya = _temTuya(e);
     const faixa = (e.limiteMin != null || e.limiteMax != null) ? `${e.limiteMin ?? '-∞'} a ${e.limiteMax ?? '+∞'}°C` : 'sem limite';
-    const modoL = { manual: 'Manual', iot: 'IoT', ambos: 'Manual + IoT' };
+    const modoL = { manual: 'Manual', iot: 'IoT' };
     // Sonda: prioriza telemetria Tuya "agora" (independe do dia filtrado);
     // sem Tuya, cai pra última leitura manual do dia (comportamento de sempre).
     const sondaValor = temTuya ? (tel?.probe?.valorC ?? null) : (u ? u.valor : null);
@@ -289,10 +255,13 @@
       <div style="font-weight:700">${tel?.bateria ? esc(tel.bateria.label || tel.bateria.estado) : '—'}${tel?.bateria?.estado === 'low' ? ' <span class="chip atraso">bateria baixa</span>' : ''}</div>` : '';
     const ultimaMedicao = temTuya ? (tel?.probe?.propertyTime ? _tempoRel(tel.probe.propertyTime) : null) : (u ? _tempoRel(u.em) : null);
     const ultimaSinc = temTuya && tel?.sincronizadoEm ? _tempoRel(tel.sincronizadoEm) : null;
+    const avisoPendente = e.modoPendenteRevisao ? `<div class="chip aberta" style="margin-top:6px">Modo migrado automaticamente — revise em Cadastro → Equipamentos</div>` : '';
+    const avisoDesativado = (e.modoAnterior === 'iot' && e.sensorAtivo === false) ? `<div class="chip neutral" style="margin-top:6px">Sensor IoT desativado por manutenção — em modo manual</div>` : '';
     return `<div class="card">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
         <div><strong>${esc(e.nome)}</strong> <span class="chip neutral">${esc(CATEGORIAS_EQUIP[e.categoria] || e.categoria)}</span>
-          <div class="muted" style="font-size:.82rem;margin-top:2px">Faixa ${faixa} · ${modoL[e.modo] || e.modo}${e.freqPorDia ? ' · ' + e.freqPorDia + '×/dia' : ''}</div></div>
+          <div class="muted" style="font-size:.82rem;margin-top:2px">Faixa ${faixa} · ${modoL[e.modo] || e.modo}${e.freqPorDia ? ' · ' + e.freqPorDia + '×/dia' : ''}</div>
+          ${avisoPendente}${avisoDesativado}</div>
         <div style="text-align:right;flex:none">
           <div class="muted" style="font-size:.74rem">Temperatura sonda</div>
           ${chipSonda}
@@ -379,8 +348,8 @@
       <div class="eyebrow" style="margin:22px 0 8px">Leituras do dia</div>${lista}`;
     if (temGraficoTemp || temGraficoUmid) {
       ensureChartJs().then(() => {
-        if (temGraficoTemp) _renderGraficoTemperaturas(eqs, regs);
-        if (temGraficoUmid) _renderGraficoUmidade(eqs, regs);
+        if (temGraficoTemp) TemperaturaChart.renderGraficoTemperaturas('tempChartTemp', eqs, regs, 'dashboard');
+        if (temGraficoUmid) TemperaturaChart.renderGraficoUmidade('tempChartUmid', eqs, regs, 'dashboard');
       }).catch(e => console.error('Chart.js:', e.message));
     }
   }

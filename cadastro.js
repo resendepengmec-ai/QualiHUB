@@ -225,8 +225,19 @@
     $('#novoEq').onclick = () => abrirEquipModal(cid, null);
     body.querySelectorAll('[data-edit-eq]').forEach(b => b.onclick = () => abrirEquipModal(cid, eqs.find(x => x.id === b.dataset.editEq)));
     body.querySelectorAll('[data-del-eq]').forEach(b => b.onclick = async () => {
-      if (!confirm('Excluir este equipamento?')) return;
-      try { await DB.removeEquipamento(b.dataset.delEq); toast('Equipamento excluído.'); cadEquipamentos(); } catch (e) { toast(e.message, true); }
+      if (!confirm('Excluir este equipamento? O histórico de medições é preservado (não é possível recuperar o cadastro depois).')) return;
+      try { await DB.removeEquipamento(b.dataset.delEq); toast('Equipamento excluído — histórico preservado.'); cadEquipamentos(); } catch (e) { toast(e.message, true); }
+    });
+    // Desativar: converte pra modo manual preservando as credenciais Tuya
+    // e todo o histórico — útil pra manutenção do sensor sem perder o
+    // equipamento. Reativar EXIGE testar a conexão de novo (nunca
+    // automático só porque a Tuya voltou a responder).
+    body.querySelectorAll('[data-desativar-sensor]').forEach(b => b.onclick = async () => {
+      if (!confirm('Isso desativa o sensor e converte o equipamento pra modo manual, preservando todo o histórico. Continuar?')) return;
+      try { await DB.desativarSensor(b.dataset.desativarSensor); toast('Sensor desativado — equipamento em modo manual.'); cadEquipamentos(); } catch (e) { toast(e.message, true); }
+    });
+    body.querySelectorAll('[data-reativar-sensor]').forEach(b => b.onclick = async () => {
+      try { await DB.reativarSensor(b.dataset.reativarSensor); toast('Sensor reativado.'); cadEquipamentos(); } catch (e) { toast(e.message, true); }
     });
     body.querySelectorAll('[data-tok]').forEach(b => b.onclick = () => {
       const el = document.getElementById('tok_' + b.dataset.tok); if (el) { el.style.display = el.style.display === 'none' ? 'block' : 'none'; }
@@ -257,15 +268,20 @@
 
   function cardEquip(e, cid) {
     const faixa = (e.limiteMin != null || e.limiteMax != null) ? `${e.limiteMin ?? '-∞'}°C a ${e.limiteMax ?? '+∞'}°C` : 'sem limite definido';
-    const modoLbl = { manual: 'Manual', iot: 'IoT', ambos: 'Manual + IoT' }[e.modo] || e.modo;
-    const temIot = e.modo === 'iot' || e.modo === 'ambos';
+    const modoLbl = { manual: 'Manual', iot: 'IoT' }[e.modo] || e.modo;
+    const temIot = e.modo === 'iot';
     const multiEst = cid && estabelecimentosDoContrato(cid).length > 1;
+    const avisoPendente = e.modoPendenteRevisao ? `<div class="chip aberta" style="margin-top:6px">Modo "Manual + IoT" migrado automaticamente — revise e confirme o modo (salve o cadastro de novo)</div>` : '';
+    const avisoDesativado = (e.modoAnterior === 'iot' && e.sensorAtivo === false) ? `<div class="chip neutral" style="margin-top:6px">Sensor IoT desativado por manutenção — equipamento em modo manual</div>` : '';
     return `<div class="card">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
         <div><strong>${esc(e.nome)}</strong> <span class="chip neutral">${esc((CATEGORIAS_EQUIP[e.categoria] || e.categoria))}</span>
-          <div class="muted" style="font-size:.82rem;margin-top:2px">${multiEst ? esc(nomeEstabelecimento(cid, e.estabelecimentoId) || 'Sem estabelecimento') + ' · ' : ''}Faixa: ${faixa}${e.freqPorDia ? ' · ' + e.freqPorDia + '×/dia' : ''} · ${modoLbl}</div></div>
-        <div style="display:flex;gap:6px;flex:none">
+          <div class="muted" style="font-size:.82rem;margin-top:2px">${multiEst ? esc(nomeEstabelecimento(cid, e.estabelecimentoId) || 'Sem estabelecimento') + ' · ' : ''}Faixa: ${faixa}${e.freqPorDia ? ' · ' + e.freqPorDia + '×/dia' : ''} · ${modoLbl}</div>
+          ${avisoPendente}${avisoDesativado}</div>
+        <div style="display:flex;gap:6px;flex:none;flex-wrap:wrap">
           <button class="btn sm" data-edit-eq="${e.id}">Editar</button>
+          ${temIot ? `<button class="btn ghost sm" data-desativar-sensor="${e.id}">Desativar sensor</button>` : ''}
+          ${(e.modoAnterior === 'iot' && e.sensorAtivo === false) ? `<button class="btn ghost sm" data-reativar-sensor="${e.id}">Reativar sensor</button>` : ''}
           <button class="btn sm danger" data-del-eq="${e.id}">Excluir</button>
         </div>
       </div>
@@ -289,11 +305,13 @@
   function abrirEquipModal(cid, e) {
     const ed = !!e;
     const cats = Object.entries(CATEGORIAS_EQUIP).map(([k, v]) => `<option value="${k}" ${ed && e.categoria === k ? 'selected' : ''}>${v}</option>`).join('');
-    const modos = [['manual', 'Manual'], ['iot', 'IoT (sensor)'], ['ambos', 'Manual + IoT']].map(([k, v]) => `<option value="${k}" ${ed && e.modo === k ? 'selected' : ''}>${v}</option>`).join('');
+    const modos = [['manual', 'Manual'], ['iot', 'IoT (sensor)']].map(([k, v]) => `<option value="${k}" ${ed && e.modo === k ? 'selected' : ''}>${v}</option>`).join('');
     const modoAtual = ed ? e.modo : 'manual';
+    const avisoPendenteModal = (ed && e.modoPendenteRevisao) ? `<p class="chip aberta" style="display:inline-block;margin:0 0 10px">Modo "Manual + IoT" (removido) migrado automaticamente — escolha Manual ou IoT e salve pra confirmar.</p>` : '';
     const regioes = [['us', 'América'], ['eu', 'Europa'], ['cn', 'China'], ['in', 'Índia']]
       .map(([k, v]) => `<option value="${k}" ${ed && (e.tuyaRegiao || 'us') === k ? 'selected' : ''}>${v}</option>`).join('');
     openModal(`<h2>${ed ? 'Editar' : 'Novo'} equipamento / recinto</h2>
+      ${avisoPendenteModal}
       <div class="row"><label class="field"><span>Nome</span><input id="eqNome" value="${ed ? esc(e.nome) : ''}" placeholder="Ex.: Câmara fria 1"></label>
         <label class="field"><span>Categoria</span><select id="eqCat">${cats}</select></label></div>
       <div class="row"><label class="field"><span>Limite mínimo (°C)</span><input id="eqMin" type="number" step="any" value="${ed && e.limiteMin != null ? e.limiteMin : ''}"></label>
@@ -303,7 +321,7 @@
       <label class="field"><span>Identificação do sensor (opcional)</span><input id="eqSensor" value="${ed ? esc(e.sensorId || '') : ''}" placeholder="Ex.: ESP32-cam1"></label>
       ${campoEstabelecimento(cid, ed ? (e.estabelecimentoId || null) : null, 'eqEst')}
       <p class="muted" style="font-size:.76rem;margin-top:-4px">Em modo IoT, um token é gerado ao salvar (aparece no card do equipamento).</p>
-      <div id="eqTuyaBlock" style="display:${(modoAtual === 'iot' || modoAtual === 'ambos') ? 'block' : 'none'};margin-top:10px;background:var(--surface-2);border-radius:8px;padding:10px">
+      <div id="eqTuyaBlock" style="display:${modoAtual === 'iot' ? 'block' : 'none'};margin-top:10px;background:var(--surface-2);border-radius:8px;padding:10px">
         <p class="eyebrow" style="margin:0 0 8px">Sensor Tuya (opcional)</p>
         <div class="row"><label class="field"><span>Access ID</span><input id="eqTuyaAccessId" value="${ed ? esc(e.tuyaAccessId || '') : ''}"></label>
           <label class="field"><span>Access Secret</span><input id="eqTuyaAccessSecret" value="${ed ? esc(e.tuyaAccessSecret || '') : ''}"></label></div>
@@ -317,7 +335,7 @@
       <div class="actions"><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="eqOk">Salvar</button></div>`);
     $('#eqModo').onchange = () => {
       const m = $('#eqModo').value;
-      $('#eqTuyaBlock').style.display = (m === 'iot' || m === 'ambos') ? 'block' : 'none';
+      $('#eqTuyaBlock').style.display = m === 'iot' ? 'block' : 'none';
     };
     // Telemetria auxiliar (ambiente/umidade/bateria): detectada junto da
     // sonda em "Testar conexão" e ecoada no salvar como campo oculto —

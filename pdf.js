@@ -307,24 +307,163 @@
     }).catch(e => toast('Nao foi possivel gerar o PDF: ' + e.message, true));
   }
 
-  // ── Relatório de Temperatura (reaproveita /relatorios/pac travado em pt-temperatura) ──
+  // ── Relatório dedicado de Temperatura ──────────────────────────────
+  // Gerador PRÓPRIO (não reaproveita pdfPac/relatório genérico): período +
+  // seleção de equipamentos + modo de gráfico agrupado/individual, capa,
+  // KPIs, uma seção por equipamento (identificação, config, limites,
+  // gráfico quando individual, tabela de medições brutas COMPLETA — nunca
+  // truncada) e frequência configurada vs. observada. Dados vêm já
+  // filtrados pelo servidor (GET /contratos/:id/temperatura/relatorio),
+  // nunca baixando o histórico inteiro do contrato.
   async function abrirRelatorioTemperaturaModal() {
     const cid = getContratoAtual(); if (!cid) return toast('Selecione um contrato.', true);
+    let eqs = [];
+    try { eqs = await DB.getEquipamentos(cid); } catch (e) { return toast(e.message, true); }
     openModal(`<div class="eyebrow">Temperatura</div><h2>Gerar PDF</h2>
-      <label class="field" style="display:none"><span>Ou pelo período de uma visita</span><select id="rtVisita"></select></label>
       <div class="row"><label class="field"><span>De</span><input type="date" id="rtFrom"></label>
         <label class="field"><span>Até</span><input type="date" id="rtTo"></label></div>
-      <p class="muted" style="font-size:.78rem">Sem datas, entram todos os registros de temperatura do contrato.</p>
+      <label class="field"><span>Modo do gráfico</span><select id="rtModoGrafico">
+        <option value="agrupado">Agrupado (todos os equipamentos no mesmo gráfico)</option>
+        <option value="individual">Individual (um gráfico por equipamento)</option>
+      </select></label>
+      <div class="field"><span>Equipamentos (vazio = todos)</span>
+        <div style="max-height:160px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:8px">
+          ${eqs.length ? eqs.map(e => `<label style="display:flex;gap:6px;align-items:center;font-size:.85rem;margin:2px 0"><input type="checkbox" class="rtEq" value="${esc(e.id)}">${esc(e.nome)}</label>`).join('') : '<span class="muted">Nenhum equipamento cadastrado.</span>'}
+        </div>
+      </div>
+      <p class="muted" style="font-size:.78rem">Sem datas, entram todos os registros de temperatura do contrato. A tabela de medições brutas nunca é truncada, mesmo com muitos registros.</p>
       <div class="actions"><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="rtGerar">Gerar</button></div>`);
-    _wireFiltroVisita(cid, 'rtVisita', 'rtFrom', 'rtTo');
     $('#rtGerar').onclick = async () => {
-      const p = new URLSearchParams(); p.set('contrato', cid); p.set('planilha', 'pt-temperatura');
-      if ($('#rtFrom').value) p.set('from', $('#rtFrom').value);
-      if ($('#rtTo').value) p.set('to', $('#rtTo').value);
+      const from = $('#rtFrom').value || undefined, to = $('#rtTo').value || undefined;
+      const modoGrafico = $('#rtModoGrafico').value;
+      const equipamentos = [...document.querySelectorAll('.rtEq:checked')].map(c => c.value);
       $('#rtGerar').disabled = true;
-      try { const dados = await DB.getRelatorioPac(p.toString()); closeModal(); pdfPac(dados); }
-      catch (e) { toast(e.message, true); $('#rtGerar').disabled = false; }
+      try {
+        const dados = await DB.getRelatorioTemperatura(cid, { from, to, equipamentos });
+        closeModal();
+        await gerarPdfTemperatura(dados, { modoGrafico, from, to });
+      } catch (e) { toast(e.message, true); $('#rtGerar').disabled = false; }
     };
+  }
+
+  const ORIGEM_LABEL_TEMP = { manual: 'Manual', iot_tuya: 'IoT (Tuya)', iot_generico: 'IoT (genérico)' };
+
+  // Canvas desacoplado do DOM, com tamanho FIXO em pixels — usado só pra
+  // capturar a imagem do gráfico (toBase64Image) e embutir no PDF; nunca
+  // é exibido na tela. animation:false (ver temperature-chart.js) garante
+  // que a imagem já sai completa, sem esperar nenhuma transição.
+  function _canvasOffscreen(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+
+  // Frequência OBSERVADA: medições por dia corrido no período, a partir
+  // dos timestamps reais das leituras — nunca inventada, só contada.
+  function _frequenciaObservada(leiturasDoEquip) {
+    if (!leiturasDoEquip.length) return 0;
+    const dias = new Set(leiturasDoEquip.map(l => new Date(l.criadoEm || 0).toISOString().slice(0, 10)));
+    return +(leiturasDoEquip.length / dias.size).toFixed(1);
+  }
+
+  async function gerarPdfTemperatura(dados, opcoes) {
+    toast('Gerando PDF...');
+    try {
+      await Promise.all([ensurePdfMake(), ensureChartJs()]);
+      const equipamentos = dados.equipamentos || [];
+      const leituras = dados.leituras || [];
+      const geradoEm = new Date(dados.geradoEm || Date.now()).toLocaleString('pt-BR');
+      const periodo = (opcoes.from || opcoes.to) ? (opcoes.from ? fmtDate(opcoes.from) : 'início') + ' a ' + (opcoes.to ? fmtDate(opcoes.to) : 'hoje') : 'Todo o período';
+
+      // KPIs do escopo selecionado.
+      const totalLeituras = leituras.length;
+      const conformes = leituras.filter(l => l.conforme).length;
+      const pctConforme = totalLeituras ? Math.round((conformes / totalLeituras) * 100) : null;
+      const bateriasBaixas = new Set(leituras.filter(l => l.telemetria?.bateria?.estado === 'low').map(l => l.equipamentoId)).size;
+      const kpis = { text: [
+        { text: equipamentos.length + ' equipamento(s)  ·  ', bold: false },
+        { text: totalLeituras + ' medição(ões) no período  ·  ' },
+        { text: (pctConforme != null ? pctConforme + '% conforme' : 'sem medições') + (bateriasBaixas ? '  ·  ' + bateriasBaixas + ' sensor(es) com bateria baixa' : '') },
+      ], fontSize: 9, color: '#5e6b65', margin: [0, 0, 0, 14] };
+
+      const body = [
+        { text: 'Relatório de Temperatura', fontSize: 15, bold: true, margin: [0, 4, 0, 2] },
+        { text: 'Período: ' + periodo + '   ·   Gráfico: ' + (opcoes.modoGrafico === 'individual' ? 'individual por equipamento' : 'agrupado'), fontSize: 9, color: '#5e6b65', margin: [0, 0, 0, 4] },
+        kpis,
+      ];
+
+      // Gráfico AGRUPADO: um único gráfico com todas as séries, mesma
+      // identidade visual (cor+traço+marcador) do dashboard.
+      if (opcoes.modoGrafico !== 'individual' && equipamentos.length) {
+        const canvas = _canvasOffscreen(960, 420);
+        const regsComoNoDashboard = agruparLeiturasEmRegistros(leituras);
+        const chart = TemperaturaChart.renderGraficoTemperaturas(canvas, equipamentos, regsComoNoDashboard, 'pdf');
+        if (chart) { body.push({ image: chart.toBase64Image(), fit: [515, 225], margin: [0, 4, 0, 14] }); chart.destroy(); }
+      }
+
+      if (!equipamentos.length) body.push({ text: 'Nenhum equipamento no escopo selecionado.', italics: true, color: '#8a938e' });
+
+      equipamentos.forEach((e, idx) => {
+        const leiturasDoEquip = leituras.filter(l => l.equipamentoId === e.id).sort((a, b) => (a.criadoEm || 0) - (b.criadoEm || 0));
+        const faixa = (e.limiteMin != null || e.limiteMax != null) ? `${e.limiteMin ?? '-∞'} a ${e.limiteMax ?? '+∞'}°C` : 'sem limite';
+        const sec = [
+          { text: (idx + 1) + '. ' + e.nome, fontSize: 12, bold: true, color: '#45912E', pageBreak: idx > 0 ? 'before' : undefined, margin: [0, idx > 0 ? 0 : 6, 0, 2] },
+          { text: 'Categoria: ' + (CATEGORIAS_EQUIP[e.categoria] || e.categoria || '—') + (e.excluidoEm ? '  ·  EXCLUÍDO em ' + new Date(e.excluidoEm).toLocaleDateString('pt-BR') : ''), fontSize: 8.5, color: '#5e6b65' },
+          { text: 'Configuração atual: faixa ' + faixa + (e.freqPorDia ? ' · frequência configurada ' + e.freqPorDia + '×/dia' : ' · sem frequência configurada') + ' · modo ' + (e.modo === 'iot' ? 'IoT' : 'Manual'), fontSize: 8.5, color: '#5e6b65', margin: [0, 2, 0, 0] },
+          { text: 'Frequência observada no período: ' + _frequenciaObservada(leiturasDoEquip) + ' medição(ões)/dia (calculada pelos horários reais das leituras)', fontSize: 8.5, color: '#5e6b65', margin: [0, 2, 0, 6] },
+        ];
+        if (opcoes.modoGrafico === 'individual' && leiturasDoEquip.length) {
+          const canvas = _canvasOffscreen(960, 380);
+          const { chart, avisoLimiteMudou } = TemperaturaChart.renderGraficoIndividual(canvas, e, leiturasDoEquip, 'pdf');
+          if (chart) { sec.push({ image: chart.toBase64Image(), fit: [515, 205], margin: [0, 0, 0, avisoLimiteMudou ? 2 : 8] }); chart.destroy(); }
+          if (avisoLimiteMudou) sec.push({ text: 'Os limites deste equipamento mudaram durante o período — a linha de limite não é exibida para não representar um valor único incorreto; veja o limite vigente em cada linha da tabela abaixo.', fontSize: 7.5, italics: true, color: '#8a938e', margin: [0, 0, 0, 8] });
+        }
+        // Tabela de medições brutas — SEMPRE completa, nunca paginada-pra-
+        // fora nem reduzida, mesmo que o gráfico acima tenha sido limitado.
+        if (leiturasDoEquip.length) {
+          sec.push({
+            table: {
+              headerRows: 1, widths: ['auto', 'auto', 'auto', 'auto', 'auto'],
+              body: [
+                [{ text: 'Data/hora', bold: true, fontSize: 8 }, { text: 'Valor', bold: true, fontSize: 8 }, { text: 'Limites na medição', bold: true, fontSize: 8 }, { text: 'Conforme', bold: true, fontSize: 8 }, { text: 'Origem', bold: true, fontSize: 8 }],
+                ...leiturasDoEquip.map(l => [
+                  { text: l.criadoEm ? new Date(l.criadoEm).toLocaleString('pt-BR') : '—', fontSize: 7.5 },
+                  { text: (l.valor != null ? l.valor + '°C' : '—'), fontSize: 7.5 },
+                  { text: `${l.limiteMinNaMedicao ?? '-∞'} a ${l.limiteMaxNaMedicao ?? '+∞'}°C`, fontSize: 7.5 },
+                  { text: l.conforme ? 'Sim' : 'Não', fontSize: 7.5, color: l.conforme ? '#2E6620' : '#a4303f' },
+                  { text: ORIGEM_LABEL_TEMP[l.origemDetalhada] || l.origem || '—', fontSize: 7.5 },
+                ]),
+              ],
+            }, layout: 'lightHorizontalLines', margin: [0, 0, 0, 10],
+          });
+        } else {
+          sec.push({ text: 'Nenhuma medição no período selecionado.', italics: true, fontSize: 8.5, color: '#8a938e', margin: [0, 0, 0, 10] });
+        }
+        body.push({ stack: sec });
+      });
+
+      body.push({ canvas: [{ type: 'line', x1: 0, y1: 6, x2: 515, y2: 6, lineWidth: 0.5, lineColor: '#cccccc' }], margin: [0, 8, 0, 0] });
+      body.push({ text: 'Dados de origem/aprovação preservados conforme registrados — nenhum valor é inventado ou interpolado.', fontSize: 7.5, color: '#8a938e', margin: [0, 6, 0, 0] });
+      body.push({ text: 'Documento gerado em ' + geradoEm, fontSize: 7.5, color: '#5e6b65' });
+
+      await _finalizarPdf({
+        pageSize: 'A4', pageMargins: [40, 70, 40, 42],
+        header: () => ({ margin: [40, 22, 40, 0], stack: [
+          { text: 'QShub', bold: true, fontSize: 12, color: '#2E6620' },
+          { canvas: [{ type: 'line', x1: 0, y1: 6, x2: 515, y2: 6, lineWidth: 0.7, lineColor: '#45912E' }] },
+        ] }),
+        footer: (cp, pc) => ({ margin: [40, 8, 40, 0], columns: [
+          { text: 'Gerado em ' + geradoEm, fontSize: 7, color: '#8a938e' },
+          { text: 'Página ' + cp + ' de ' + pc, alignment: 'right', fontSize: 7, color: '#8a938e' },
+        ] }),
+        content: body, defaultStyle: { fontSize: 10, color: '#12211c' },
+      }, 'temperatura.pdf');
+    } catch (e) { toast('Não foi possível gerar o PDF: ' + e.message, true); }
+  }
+
+  // O renderizador de gráfico agrupado (temperature-chart.js) espera o
+  // mesmo formato de "registros" usado no dashboard (um item por leitura,
+  // com dados.leituras[0] e dados.telemetria) — a rota de relatório devolve
+  // leituras já achatadas; esta função só reconstrói esse formato, sem
+  // alterar nenhum valor.
+  function agruparLeiturasEmRegistros(leituras) {
+    return leituras.map(l => ({ criadoEm: l.criadoEm, dados: { leituras: [l], telemetria: l.telemetria || null } }));
   }
 
   // ── Relatório de Documentos sanitários ────────────────────────────
