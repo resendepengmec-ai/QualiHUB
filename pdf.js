@@ -83,32 +83,45 @@
     };
   }
 
+  // ── Cabeçalho/rodapé institucional compartilhado por TODOS os PDFs
+  // gerados pelo QShub (Etapa 9 — padronização) ──────────────────────
+  // Dados vêm automaticamente do perfil da empresa (d.cabecalho, montado
+  // no servidor a partir de db.getPerfil — nunca hardcoded aqui, nunca
+  // inventado quando algum campo está ausente). Usado por pdfPac,
+  // gerarRelatorioPDF, pdfDocumentos e gerarPdfTemperatura — um único
+  // lugar garante que todo PDF novo gerado pelo sistema sai igual.
+  function _pdfTemBranding(cab) { return !!(cab.logoDataUrl || cab.razaoSocial || cab.nomeFantasia); }
+  function _pdfHeader(cab) {
+    const emp = [{ text: cab.razaoSocial || cab.nomeFantasia || 'QShub', bold: true, fontSize: 12, color: '#2E6620' }];
+    if (cab.nomeFantasia && cab.razaoSocial) emp.push({ text: cab.nomeFantasia, fontSize: 8, color: '#5e6b65' });
+    if (cab.cnpj) emp.push({ text: 'CNPJ: ' + cab.cnpj, fontSize: 8, color: '#5e6b65' });
+    if (cab.endereco) emp.push({ text: cab.endereco, fontSize: 8, color: '#5e6b65' });
+    if (cab.contato) emp.push({ text: cab.contato, fontSize: 8, color: '#5e6b65' });
+    const cols = [];
+    if (cab.logoDataUrl) cols.push({ image: cab.logoDataUrl, fit: [110, 46], margin: [0, 0, 12, 0] });
+    cols.push({ stack: emp, width: '*' });
+    return { margin: [40, 22, 40, 0], stack: [
+      { columns: cols, columnGap: 10 },
+      { canvas: [{ type: 'line', x1: 0, y1: 6, x2: 515, y2: 6, lineWidth: 0.7, lineColor: '#45912E' }] },
+    ] };
+  }
+  function _pdfFooter(geradoPorTexto, geradoEmTexto) {
+    return (cp, pc) => ({ margin: [40, 8, 40, 0], columns: [
+      { text: 'Gerado por ' + geradoPorTexto + ' em ' + geradoEmTexto, fontSize: 7, color: '#8a938e' },
+      { text: 'Pagina ' + cp + ' de ' + pc, alignment: 'right', fontSize: 7, color: '#8a938e' },
+    ] });
+  }
+
   function pdfPac(d) {
     toast('Gerando PDF...');
     ensurePdfMake().then(() => {
       const cab = d.cabecalho || {};
-      const temBranding = !!(cab.logoDataUrl || cab.razaoSocial || cab.nomeFantasia);
+      const temBranding = _pdfTemBranding(cab);
       const periodo = (d.escopo.from || d.escopo.to)
         ? (d.escopo.from ? fmtDate(d.escopo.from) : 'inicio') + ' a ' + (d.escopo.to ? fmtDate(d.escopo.to) : 'hoje') : 'Todo o periodo';
       const geradoEm = new Date(d.geradoEm).toLocaleString('pt-BR');
-      const header = () => {
-        const emp = [{ text: cab.razaoSocial || cab.nomeFantasia || 'QShub', bold: true, fontSize: 12, color: '#2E6620' }];
-        if (cab.nomeFantasia && cab.razaoSocial) emp.push({ text: cab.nomeFantasia, fontSize: 8, color: '#5e6b65' });
-        if (cab.cnpj) emp.push({ text: 'CNPJ: ' + cab.cnpj, fontSize: 8, color: '#5e6b65' });
-        if (cab.endereco) emp.push({ text: cab.endereco, fontSize: 8, color: '#5e6b65' });
-        if (cab.contato) emp.push({ text: cab.contato, fontSize: 8, color: '#5e6b65' });
-        const cols = [];
-        if (cab.logoDataUrl) cols.push({ image: cab.logoDataUrl, fit: [110, 46], margin: [0, 0, 12, 0] });
-        cols.push({ stack: emp, width: '*' });
-        return { margin: [40, 22, 40, 0], stack: [
-          { columns: cols, columnGap: 10 },
-          { canvas: [{ type: 'line', x1: 0, y1: 6, x2: 515, y2: 6, lineWidth: 0.7, lineColor: '#45912E' }] },
-        ] };
-      };
-      const footer = (cp, pc) => ({ margin: [40, 8, 40, 0], columns: [
-        { text: 'Gerado por ' + d.geradoPor + ' em ' + geradoEm, fontSize: 7, color: '#8a938e' },
-        { text: 'Pagina ' + cp + ' de ' + pc, alignment: 'right', fontSize: 7, color: '#8a938e' },
-      ] });
+      const header = () => _pdfHeader(cab);
+      const footer = _pdfFooter(d.geradoPor, geradoEm);
       const valores = (reg) => {
         const dd = reg.dados || {};
         if (Array.isArray(dd.leituras)) {
@@ -229,31 +242,15 @@
     ensurePdfMake().then(async () => {
       await _carregarFotosParaPdf(d.ocorrencias, (feito, total) => toast(`Gerando PDF... carregando fotos (${feito}/${total})`));
       const cab = d.cabecalho || {};
-      const temBranding = !!(cab.logoDataUrl || cab.razaoSocial || cab.nomeFantasia);
+      const temBranding = _pdfTemBranding(cab);
       const linhaEscopo = [d.escopo.contratoNumero ? 'Contrato ' + d.escopo.contratoNumero : 'Todos os contratos'];
       if (d.escopo.estabelecimentoNome) linhaEscopo.push('Estabelecimento: ' + d.escopo.estabelecimentoNome);
       const periodo = (d.escopo.from || d.escopo.to)
         ? (d.escopo.from ? fmtDate(d.escopo.from) : 'inicio') + ' a ' + (d.escopo.to ? fmtDate(d.escopo.to) : 'hoje') : 'Todo o periodo';
       const geradoEm = new Date(d.geradoEm).toLocaleString('pt-BR');
 
-      const header = () => {
-        const emp = [{ text: cab.razaoSocial || cab.nomeFantasia || 'QShub', bold: true, fontSize: 12, color: '#2E6620' }];
-        if (cab.nomeFantasia && cab.razaoSocial) emp.push({ text: cab.nomeFantasia, fontSize: 8, color: '#5e6b65' });
-        if (cab.cnpj) emp.push({ text: 'CNPJ: ' + cab.cnpj, fontSize: 8, color: '#5e6b65' });
-        if (cab.endereco) emp.push({ text: cab.endereco, fontSize: 8, color: '#5e6b65' });
-        if (cab.contato) emp.push({ text: cab.contato, fontSize: 8, color: '#5e6b65' });
-        const cols = [];
-        if (cab.logoDataUrl) cols.push({ image: cab.logoDataUrl, fit: [110, 46], margin: [0, 0, 12, 0] });
-        cols.push({ stack: emp, width: '*' });
-        return { margin: [40, 22, 40, 0], stack: [
-          { columns: cols, columnGap: 10 },
-          { canvas: [{ type: 'line', x1: 0, y1: 6, x2: 515, y2: 6, lineWidth: 0.7, lineColor: '#45912E' }] },
-        ] };
-      };
-      const footer = (currentPage, pageCount) => ({ margin: [40, 8, 40, 0], columns: [
-        { text: 'Gerado por ' + (d.geradoPor || d.geradoPorEmail) + ' em ' + geradoEm, fontSize: 7, color: '#8a938e' },
-        { text: 'Pagina ' + currentPage + ' de ' + pageCount, alignment: 'right', fontSize: 7, color: '#8a938e' },
-      ] });
+      const header = () => _pdfHeader(cab);
+      const footer = _pdfFooter(d.geradoPor || d.geradoPorEmail, geradoEm);
 
       function bloco(o, n) {
         const st = statusOcorrencia(o);
@@ -346,7 +343,6 @@
     };
   }
 
-  const ORIGEM_LABEL_TEMP = { manual: 'Manual', iot_tuya: 'IoT (Tuya)', iot_generico: 'IoT (genérico)' };
 
   // Canvas desacoplado do DOM, com tamanho FIXO em pixels — usado só pra
   // capturar a imagem do gráfico (toBase64Image) e embutir no PDF; nunca
@@ -368,6 +364,8 @@
       await Promise.all([ensurePdfMake(), ensureChartJs()]);
       const equipamentos = dados.equipamentos || [];
       const leituras = dados.leituras || [];
+      const cab = dados.cabecalho || {};
+      const temBranding = _pdfTemBranding(cab);
       const geradoEm = new Date(dados.geradoEm || Date.now()).toLocaleString('pt-BR');
       const periodo = (opcoes.from || opcoes.to) ? (opcoes.from ? fmtDate(opcoes.from) : 'início') + ' a ' + (opcoes.to ? fmtDate(opcoes.to) : 'hoje') : 'Todo o período';
 
@@ -384,6 +382,7 @@
 
       const body = [
         { text: 'Relatório de Temperatura', fontSize: 15, bold: true, margin: [0, 4, 0, 2] },
+        { text: 'Contrato ' + (dados.escopo?.contratoNumero || '-') + (dados.escopo?.estabelecimentoNome ? '  ·  ' + dados.escopo.estabelecimentoNome : ''), fontSize: 9, color: '#5e6b65' },
         { text: 'Período: ' + periodo + '   ·   Gráfico: ' + (opcoes.modoGrafico === 'individual' ? 'individual por equipamento' : 'agrupado'), fontSize: 9, color: '#5e6b65', margin: [0, 0, 0, 4] },
         kpis,
       ];
@@ -405,9 +404,19 @@
         const sec = [
           { text: (idx + 1) + '. ' + e.nome, fontSize: 12, bold: true, color: '#45912E', pageBreak: idx > 0 ? 'before' : undefined, margin: [0, idx > 0 ? 0 : 6, 0, 2] },
           { text: 'Categoria: ' + (CATEGORIAS_EQUIP[e.categoria] || e.categoria || '—') + (e.excluidoEm ? '  ·  EXCLUÍDO em ' + new Date(e.excluidoEm).toLocaleDateString('pt-BR') : ''), fontSize: 8.5, color: '#5e6b65' },
-          { text: 'Configuração atual: faixa ' + faixa + (e.freqPorDia ? ' · frequência configurada ' + e.freqPorDia + '×/dia' : ' · sem frequência configurada') + ' · modo ' + (e.modo === 'iot' ? 'IoT' : 'Manual'), fontSize: 8.5, color: '#5e6b65', margin: [0, 2, 0, 0] },
-          { text: 'Frequência observada no período: ' + _frequenciaObservada(leiturasDoEquip) + ' medição(ões)/dia (calculada pelos horários reais das leituras)', fontSize: 8.5, color: '#5e6b65', margin: [0, 2, 0, 6] },
+          { text: 'Configuração atual: faixa ' + faixa + (e.freqPorDia ? ' · frequência configurada ' + e.freqPorDia + '×/dia' : ' · sem frequência configurada') + ' · modo ' + (e.modo === 'iot' ? 'IoT' : 'Manual') + (e.horarios?.length ? ' · horários: ' + e.horarios.join(', ') : ''), fontSize: 8.5, color: '#5e6b65', margin: [0, 2, 0, 0] },
         ];
+        // Cumprimento de frequência: previstas (janelas programadas) vs.
+        // realizadas vs. não atendidas vs. extraordinárias — vem pronto do
+        // servidor (resumoFrequencia), calculado a partir de tipoMedicao de
+        // cada leitura. null quando o equipamento nunca teve horários
+        // configurados (nada a resumir, mostra só a frequência observada).
+        if (e.resumoFrequencia) {
+          const rf = e.resumoFrequencia;
+          sec.push({ text: `Cumprimento da frequência no período: ${rf.realizadas} de ${rf.previstas} medição(ões) prevista(s) realizada(s)` + (rf.naoAtendidas ? ` · ${rf.naoAtendidas} não atendida(s)` : '') + (rf.extraordinarias ? ` · ${rf.extraordinarias} extraordinária(s)` : ''), fontSize: 8.5, color: rf.naoAtendidas ? '#a4303f' : '#2E6620', bold: true, margin: [0, 2, 0, 6] });
+        } else {
+          sec.push({ text: 'Frequência observada no período: ' + _frequenciaObservada(leiturasDoEquip) + ' medição(ões)/dia (sem programação de horários configurada — não há previstas/realizadas pra comparar)', fontSize: 8.5, color: '#5e6b65', margin: [0, 2, 0, 6] });
+        }
         if (opcoes.modoGrafico === 'individual' && leiturasDoEquip.length) {
           const canvas = _canvasOffscreen(960, 380);
           const { chart, avisoLimiteMudou } = TemperaturaChart.renderGraficoIndividual(canvas, e, leiturasDoEquip, 'pdf');
@@ -417,18 +426,26 @@
         // Tabela de medições brutas — SEMPRE completa, nunca paginada-pra-
         // fora nem reduzida, mesmo que o gráfico acima tenha sido limitado.
         if (leiturasDoEquip.length) {
+          // Tabela: Data, Hora, Temperatura, Limite mínimo, Limite máximo,
+          // Conformidade — SEM coluna "Origem" (pedido explícito; origem/
+          // origemDetalhada continuam no banco/API normalmente, só não
+          // aparecem nesta tabela impressa).
           sec.push({
             table: {
-              headerRows: 1, widths: ['auto', 'auto', 'auto', 'auto', 'auto'],
+              headerRows: 1, widths: ['auto', 'auto', 'auto', 'auto', 'auto', 'auto'],
               body: [
-                [{ text: 'Data/hora', bold: true, fontSize: 8 }, { text: 'Valor', bold: true, fontSize: 8 }, { text: 'Limites na medição', bold: true, fontSize: 8 }, { text: 'Conforme', bold: true, fontSize: 8 }, { text: 'Origem', bold: true, fontSize: 8 }],
-                ...leiturasDoEquip.map(l => [
-                  { text: l.criadoEm ? new Date(l.criadoEm).toLocaleString('pt-BR') : '—', fontSize: 7.5 },
-                  { text: (l.valor != null ? l.valor + '°C' : '—'), fontSize: 7.5 },
-                  { text: `${l.limiteMinNaMedicao ?? '-∞'} a ${l.limiteMaxNaMedicao ?? '+∞'}°C`, fontSize: 7.5 },
-                  { text: l.conforme ? 'Sim' : 'Não', fontSize: 7.5, color: l.conforme ? '#2E6620' : '#a4303f' },
-                  { text: ORIGEM_LABEL_TEMP[l.origemDetalhada] || l.origem || '—', fontSize: 7.5 },
-                ]),
+                [{ text: 'Data', bold: true, fontSize: 8 }, { text: 'Hora', bold: true, fontSize: 8 }, { text: 'Temperatura', bold: true, fontSize: 8 }, { text: 'Limite mín.', bold: true, fontSize: 8 }, { text: 'Limite máx.', bold: true, fontSize: 8 }, { text: 'Conforme', bold: true, fontSize: 8 }],
+                ...leiturasDoEquip.map(l => {
+                  const dt = l.criadoEm ? new Date(l.criadoEm) : null;
+                  return [
+                    { text: dt ? dt.toLocaleDateString('pt-BR') : '—', fontSize: 7.5 },
+                    { text: dt ? dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '—', fontSize: 7.5 },
+                    { text: (l.valor != null ? l.valor + '°C' : '—'), fontSize: 7.5 },
+                    { text: l.limiteMinNaMedicao != null ? l.limiteMinNaMedicao + '°C' : '-∞', fontSize: 7.5 },
+                    { text: l.limiteMaxNaMedicao != null ? l.limiteMaxNaMedicao + '°C' : '+∞', fontSize: 7.5 },
+                    { text: l.conforme ? 'Sim' : 'Não', fontSize: 7.5, color: l.conforme ? '#2E6620' : '#a4303f' },
+                  ];
+                }),
               ],
             }, layout: 'lightHorizontalLines', margin: [0, 0, 0, 10],
           });
@@ -440,18 +457,18 @@
 
       body.push({ canvas: [{ type: 'line', x1: 0, y1: 6, x2: 515, y2: 6, lineWidth: 0.5, lineColor: '#cccccc' }], margin: [0, 8, 0, 0] });
       body.push({ text: 'Dados de origem/aprovação preservados conforme registrados — nenhum valor é inventado ou interpolado.', fontSize: 7.5, color: '#8a938e', margin: [0, 6, 0, 0] });
-      body.push({ text: 'Documento gerado em ' + geradoEm, fontSize: 7.5, color: '#5e6b65' });
+      if (dados.rt && (dados.rt.nome || dados.rt.conselho)) body.push({ text: [{ text: 'Responsável Técnico: ', bold: true }, { text: (dados.rt.nome || '') + (dados.rt.conselho ? ' — ' + dados.rt.conselho : '') }], fontSize: 8.5, margin: [0, 6, 0, 2] });
+      if (dados.assinatura?.hash) {
+        body.push({ text: [{ text: 'Assinatura digital (HMAC): ', bold: true }, { text: dados.assinatura.hash }], fontSize: 7.5, margin: [0, 6, 0, 0] });
+        body.push({ text: 'keyId: ' + dados.assinatura.keyId + '  ·  documento gerado em ' + geradoEm, fontSize: 7.5, color: '#5e6b65' });
+      } else {
+        body.push({ text: 'Documento gerado em ' + geradoEm, fontSize: 7.5, color: '#5e6b65' });
+      }
 
       await _finalizarPdf({
-        pageSize: 'A4', pageMargins: [40, 70, 40, 42],
-        header: () => ({ margin: [40, 22, 40, 0], stack: [
-          { text: 'QShub', bold: true, fontSize: 12, color: '#2E6620' },
-          { canvas: [{ type: 'line', x1: 0, y1: 6, x2: 515, y2: 6, lineWidth: 0.7, lineColor: '#45912E' }] },
-        ] }),
-        footer: (cp, pc) => ({ margin: [40, 8, 40, 0], columns: [
-          { text: 'Gerado em ' + geradoEm, fontSize: 7, color: '#8a938e' },
-          { text: 'Página ' + cp + ' de ' + pc, alignment: 'right', fontSize: 7, color: '#8a938e' },
-        ] }),
+        pageSize: 'A4', pageMargins: [40, temBranding ? 96 : 70, 40, 42],
+        header: () => _pdfHeader(cab),
+        footer: _pdfFooter(dados.geradoPor || 'QShub', geradoEm),
         content: body, defaultStyle: { fontSize: 10, color: '#12211c' },
       }, 'temperatura.pdf');
     } catch (e) { toast('Não foi possível gerar o PDF: ' + e.message, true); }
@@ -491,26 +508,10 @@
     toast('Gerando PDF...');
     ensurePdfMake().then(() => {
       const cab = d.cabecalho || {};
-      const temBranding = !!(cab.logoDataUrl || cab.razaoSocial || cab.nomeFantasia);
+      const temBranding = _pdfTemBranding(cab);
       const geradoEm = new Date(d.geradoEm).toLocaleString('pt-BR');
-      const header = () => {
-        const emp = [{ text: cab.razaoSocial || cab.nomeFantasia || 'QShub', bold: true, fontSize: 12, color: '#2E6620' }];
-        if (cab.nomeFantasia && cab.razaoSocial) emp.push({ text: cab.nomeFantasia, fontSize: 8, color: '#5e6b65' });
-        if (cab.cnpj) emp.push({ text: 'CNPJ: ' + cab.cnpj, fontSize: 8, color: '#5e6b65' });
-        if (cab.endereco) emp.push({ text: cab.endereco, fontSize: 8, color: '#5e6b65' });
-        if (cab.contato) emp.push({ text: cab.contato, fontSize: 8, color: '#5e6b65' });
-        const cols = [];
-        if (cab.logoDataUrl) cols.push({ image: cab.logoDataUrl, fit: [110, 46], margin: [0, 0, 12, 0] });
-        cols.push({ stack: emp, width: '*' });
-        return { margin: [40, 22, 40, 0], stack: [
-          { columns: cols, columnGap: 10 },
-          { canvas: [{ type: 'line', x1: 0, y1: 6, x2: 515, y2: 6, lineWidth: 0.7, lineColor: '#45912E' }] },
-        ] };
-      };
-      const footer = (cp, pc) => ({ margin: [40, 8, 40, 0], columns: [
-        { text: 'Gerado por ' + d.geradoPor + ' em ' + geradoEm, fontSize: 7, color: '#8a938e' },
-        { text: 'Pagina ' + cp + ' de ' + pc, alignment: 'right', fontSize: 7, color: '#8a938e' },
-      ] });
+      const header = () => _pdfHeader(cab);
+      const footer = _pdfFooter(d.geradoPor, geradoEm);
       const blocoDoc = (doc, n) => {
         const meta = [];
         if (doc.numero) meta.push('Nº ' + doc.numero);

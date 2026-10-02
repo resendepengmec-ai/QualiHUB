@@ -231,7 +231,28 @@
     </div>`;
   }
 
-  function _cardEquipTemperatura(e, ult) {
+  // Cumprimento de frequência (hoje), só pra PREVIEW no dashboard — usa o
+  // fuso do NAVEGADOR (não America/Sao_Paulo exato como o backend), então
+  // é uma estimativa visual; a classificação que realmente conta
+  // (tipoMedicao/janelaIndice) é sempre calculada no servidor no momento
+  // de cada leitura. Separado de PROPÓSITO da conformidade térmica — são
+  // dois indicadores diferentes (a sonda pode estar conforme mesmo com
+  // frequência incompleta, e vice-versa).
+  function _cumprimentoFrequenciaHoje(e, regsHoje, ehHoje) {
+    if (!e.horarios || !e.horarios.length || !ehHoje) return null;
+    const agora = new Date();
+    const minutosAgora = agora.getHours() * 60 + agora.getMinutes();
+    const minutos = e.horarios.map(h => { const [hh, mm] = h.split(':').map(Number); return hh * 60 + mm; });
+    const janelasRegularesPreenchidas = new Set();
+    regsHoje.forEach(r => (r.dados?.leituras || []).forEach(l => {
+      if (l.equipamentoId === e.id && l.tipoMedicao === 'regular' && l.janelaIndice != null) janelasRegularesPreenchidas.add(l.janelaIndice);
+    }));
+    const proximoMin = minutos.find(m => m > minutosAgora);
+    const proximoHorario = proximoMin != null ? e.horarios[minutos.indexOf(proximoMin)] : null;
+    return { previstas: minutos.length, realizadas: janelasRegularesPreenchidas.size, proximoHorario };
+  }
+
+  function _cardEquipTemperatura(e, ult, regsHoje, ehHoje) {
     const u = ult[e.id];
     const tel = e.tuyaTelemetry;
     const temTuya = _temTuya(e);
@@ -257,11 +278,16 @@
     const ultimaSinc = temTuya && tel?.sincronizadoEm ? _tempoRel(tel.sincronizadoEm) : null;
     const avisoPendente = e.modoPendenteRevisao ? `<div class="chip aberta" style="margin-top:6px">Modo migrado automaticamente — revise em Cadastro → Equipamentos</div>` : '';
     const avisoDesativado = (e.modoAnterior === 'iot' && e.sensorAtivo === false) ? `<div class="chip neutral" style="margin-top:6px">Sensor IoT desativado por manutenção — em modo manual</div>` : '';
+    // Cumprimento de frequência — indicador SEPARADO da conformidade
+    // térmica (chipSonda, acima): uma coisa é "a temperatura está na
+    // faixa", outra é "as medições previstas de hoje foram feitas".
+    const freq = _cumprimentoFrequenciaHoje(e, regsHoje || [], ehHoje);
+    const chipFreq = freq ? `<div class="chip ${freq.realizadas >= freq.previstas ? 'ok' : 'aberta'}" style="margin-top:6px">Frequência hoje: ${freq.realizadas}/${freq.previstas}${freq.proximoHorario ? ' · próxima: ' + freq.proximoHorario : ''}</div>` : '';
     return `<div class="card">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
         <div><strong>${esc(e.nome)}</strong> <span class="chip neutral">${esc(CATEGORIAS_EQUIP[e.categoria] || e.categoria)}</span>
-          <div class="muted" style="font-size:.82rem;margin-top:2px">Faixa ${faixa} · ${modoL[e.modo] || e.modo}${e.freqPorDia ? ' · ' + e.freqPorDia + '×/dia' : ''}</div>
-          ${avisoPendente}${avisoDesativado}</div>
+          <div class="muted" style="font-size:.82rem;margin-top:2px">Faixa ${faixa} · ${modoL[e.modo] || e.modo}${e.freqPorDia ? ' · ' + e.freqPorDia + '×/dia' : ''}${e.horarios?.length ? ' (' + e.horarios.join(', ') + ')' : ''}</div>
+          ${chipFreq}${avisoPendente}${avisoDesativado}</div>
         <div style="text-align:right;flex:none">
           <div class="muted" style="font-size:.74rem">Temperatura sonda</div>
           ${chipSonda}
@@ -309,7 +335,8 @@
       <div class="kpi"><div class="n${sensoresTuya.some(_semAtualizacaoRecente) ? ' warn' : ''}">${sensoresTuya.filter(_semAtualizacaoRecente).length}</div><div class="lbl">Sem atualização recente</div></div>
     </div>` : '';
 
-    const cards = eqs.length ? eqs.map(e => _cardEquipTemperatura(e, ult)).join('') : `<div class="empty"><strong>Nenhum equipamento</strong>Cadastre câmaras/balcões/salas em Cadastro → Equipamentos.</div>`;
+    const ehHoje = _tempDataSelecionada === new Date().toISOString().slice(0, 10);
+    const cards = eqs.length ? eqs.map(e => _cardEquipTemperatura(e, ult, regs, ehHoje)).join('') : `<div class="empty"><strong>Nenhum equipamento</strong>Cadastre câmaras/balcões/salas em Cadastro → Equipamentos.</div>`;
 
     const temGraficoTemp = regs.some(r => (r.dados?.leituras || []).length || r.dados?.telemetria?.ambiente);
     const temGraficoUmid = regs.some(r => r.dados?.telemetria?.umidade);

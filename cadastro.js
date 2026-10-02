@@ -316,8 +316,20 @@
         <label class="field"><span>Categoria</span><select id="eqCat">${cats}</select></label></div>
       <div class="row"><label class="field"><span>Limite mínimo (°C)</span><input id="eqMin" type="number" step="any" value="${ed && e.limiteMin != null ? e.limiteMin : ''}"></label>
         <label class="field"><span>Limite máximo (°C)</span><input id="eqMax" type="number" step="any" value="${ed && e.limiteMax != null ? e.limiteMax : ''}"></label></div>
-      <div class="row"><label class="field"><span>Frequência (medições por dia)</span><input id="eqFreq" type="number" step="1" value="${ed && e.freqPorDia != null ? e.freqPorDia : ''}" placeholder="Ex.: 3"></label>
+      <div class="row"><label class="field"><span>Frequência (medições por dia)</span><input id="eqFreq" type="number" step="1" min="1" max="24" value="${ed && e.freqPorDia != null ? e.freqPorDia : ''}" placeholder="Ex.: 3"></label>
         <label class="field"><span>Forma de medição</span><select id="eqModo">${modos}</select></label></div>
+      <div class="field">
+        <span>Horários de medição (janelas programadas) — opcional</span>
+        <p class="muted" style="font-size:.76rem;margin:0 0 6px">Sem horários, toda leitura válida cria um registro (comportamento atual). Com horários, só a leitura mais próxima de cada horário previsto conta como regular — o resto fica telemetria/extraordinária.</p>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+          <button type="button" class="btn ghost sm" id="eqHorAuto">Distribuição automática</button>
+          <button type="button" class="btn ghost sm" id="eqHorCustom">Horários personalizados</button>
+          <button type="button" class="btn ghost sm" id="eqHorLimpar">Sem programação</button>
+        </div>
+        <div id="eqHorAutoBlock" style="display:none"><label class="field" style="margin:0;max-width:200px"><span>Primeiro horário</span><input type="time" id="eqHorPrimeiro"></label></div>
+        <div id="eqHorCustomBlock" style="display:none"></div>
+        <div id="eqHorPreview" class="muted" style="font-size:.82rem;margin-top:6px"></div>
+      </div>
       <label class="field"><span>Identificação do sensor (opcional)</span><input id="eqSensor" value="${ed ? esc(e.sensorId || '') : ''}" placeholder="Ex.: ESP32-cam1"></label>
       ${campoEstabelecimento(cid, ed ? (e.estabelecimentoId || null) : null, 'eqEst')}
       <p class="muted" style="font-size:.76rem;margin-top:-4px">Em modo IoT, um token é gerado ao salvar (aparece no card do equipamento).</p>
@@ -337,6 +349,55 @@
       const m = $('#eqModo').value;
       $('#eqTuyaBlock').style.display = m === 'iot' ? 'block' : 'none';
     };
+
+    // Horários de medição (janelas programadas) — replica em JS a MESMA
+    // distribuição automática do backend (temperature-schedule.js) só pra
+    // pré-visualizar antes de salvar; quem valida/persiste de verdade é
+    // sempre o servidor. `horarioModo` é só estado da UI (não é enviado);
+    // o que vai no payload é sempre o array final (ou null).
+    let horarioModo = (ed && e.horarios?.length) ? 'custom' : 'nenhum';
+    let horariosAtuais = (ed && e.horarios) ? [...e.horarios] : null;
+    function _distribuirPreview(x, primeiro) {
+      const n = Number(x);
+      if (!Number.isInteger(n) || n <= 0) return [];
+      const [hh, mm] = (primeiro || '00:00').split(':').map(Number);
+      const inicio = hh * 60 + mm, passo = 1440 / n, out = [];
+      for (let i = 0; i < n; i++) { const min = Math.round((inicio + i * passo) % 1440); out.push(String(Math.floor(min / 60)).padStart(2, '0') + ':' + String(min % 60).padStart(2, '0')); }
+      return out;
+    }
+    function _renderHorarioCustomLista() {
+      const n = Number($('#eqFreq').value) || 0;
+      const atuais = Array.isArray(horariosAtuais) ? horariosAtuais : [];
+      $('#eqHorCustomBlock').innerHTML = n > 0
+        ? Array.from({ length: n }, (_, i) => `<label class="field" style="margin:4px 0;max-width:200px"><span>Horário ${i + 1}</span><input type="time" class="eqHorCustomInput" data-i="${i}" value="${esc(atuais[i] || '')}"></label>`).join('')
+        : '<p class="muted" style="font-size:.78rem">Informe a frequência (medições por dia) primeiro.</p>';
+      $('#eqHorCustomBlock').querySelectorAll('.eqHorCustomInput').forEach(inp => inp.oninput = () => {
+        const vals = [...$('#eqHorCustomBlock').querySelectorAll('.eqHorCustomInput')].map(i2 => i2.value);
+        horariosAtuais = vals.every(v => v) ? vals : null;
+        _renderHorarioPreview();
+      });
+    }
+    function _renderHorarioPreview() {
+      $('#eqHorPreview').textContent = (horarioModo !== 'nenhum' && horariosAtuais?.length)
+        ? 'Horários: ' + [...horariosAtuais].sort().join(', ')
+        : (horarioModo === 'nenhum' ? 'Sem programação de horários — toda leitura cria um registro (comportamento atual).' : 'Preencha todos os horários.');
+    }
+    function _aplicarModoHorario() {
+      $('#eqHorAutoBlock').style.display = horarioModo === 'auto' ? 'block' : 'none';
+      $('#eqHorCustomBlock').style.display = horarioModo === 'custom' ? 'block' : 'none';
+      if (horarioModo === 'custom') _renderHorarioCustomLista();
+      _renderHorarioPreview();
+    }
+    $('#eqHorAuto').onclick = () => { horarioModo = 'auto'; if (!$('#eqHorPrimeiro').value) $('#eqHorPrimeiro').value = '06:00'; horariosAtuais = _distribuirPreview($('#eqFreq').value, $('#eqHorPrimeiro').value); _aplicarModoHorario(); };
+    $('#eqHorCustom').onclick = () => { horarioModo = 'custom'; _aplicarModoHorario(); };
+    $('#eqHorLimpar').onclick = () => { horarioModo = 'nenhum'; horariosAtuais = null; _aplicarModoHorario(); };
+    $('#eqHorPrimeiro').oninput = () => { horariosAtuais = _distribuirPreview($('#eqFreq').value, $('#eqHorPrimeiro').value); _renderHorarioPreview(); };
+    $('#eqFreq').addEventListener('input', () => {
+      if (horarioModo === 'auto') horariosAtuais = _distribuirPreview($('#eqFreq').value, $('#eqHorPrimeiro').value || '06:00');
+      if (horarioModo === 'custom') _renderHorarioCustomLista();
+      _renderHorarioPreview();
+    });
+    _aplicarModoHorario();
     // Telemetria auxiliar (ambiente/umidade/bateria): detectada junto da
     // sonda em "Testar conexão" e ecoada no salvar como campo oculto —
     // mesmo padrão já usado pra tuyaDpCode/tuyaEscala. Preserva o que já
@@ -397,8 +458,12 @@
     };
     $('#eqOk').onclick = async () => {
       const nome = $('#eqNome').value.trim(); if (!nome) return toast('Informe o nome.', true);
+      if (horarioModo !== 'nenhum' && (!horariosAtuais || horariosAtuais.length !== Number($('#eqFreq').value))) {
+        return toast('Preencha todos os horários (a quantidade precisa casar com a frequência).', true);
+      }
       const payload = { nome, categoria: $('#eqCat').value, limiteMin: $('#eqMin').value, limiteMax: $('#eqMax').value,
-        freqPorDia: $('#eqFreq').value, modo: $('#eqModo').value, sensorId: $('#eqSensor').value.trim(),
+        freqPorDia: $('#eqFreq').value, horarios: horarioModo === 'nenhum' ? null : horariosAtuais,
+        modo: $('#eqModo').value, sensorId: $('#eqSensor').value.trim(),
         estabelecimentoId: lerEstabelecimento('eqEst'),
         tuyaAccessId: $('#eqTuyaAccessId').value.trim(), tuyaAccessSecret: $('#eqTuyaAccessSecret').value,
         tuyaDeviceId: $('#eqTuyaDeviceId').value.trim(), tuyaRegiao: $('#eqTuyaRegiao').value,
