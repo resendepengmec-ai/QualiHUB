@@ -107,11 +107,62 @@
           <div><strong>${esc(c.numero)}</strong> ${(c.regimes || []).map(k => `<span class="chip sim">${(REGIME_LABEL[k] || {}).curto || k}</span>`).join(' ')} ${c.classificacao ? `<span class="chip neutral">${esc(CLASSIFICACAO_LABEL[c.classificacao] || c.classificacao)}</span>` : ''}
             <div class="muted" style="font-size:.82rem">${esc(c.objeto || '')}${c.estabelecimentoNome ? ' · ' + esc(c.estabelecimentoNome) : ''}${c.rt && c.rt.nome ? ' · RT ' + esc(c.rt.nome) : ''}${c.vigenciaInicio ? ' · vigência ' + fmtDate(c.vigenciaInicio) + '–' + fmtDate(c.vigenciaFim) : ''}${c.periodicidadeVisita ? ' · visita ' + esc(labelPeriodicidade(c.periodicidadeVisita)) : ''}</div></div>
           <div style="display:flex;gap:8px;align-items:center;flex:none">
-            ${podeEditar(c) ? `<button class="btn sm" data-edit="${c.id}">Editar</button>` : ''}
+            ${podeEditar(c) ? `<button class="btn ghost sm" data-catalogo="${c.id}">Planilhas do P.A.C.</button><button class="btn sm" data-edit="${c.id}">Editar</button>` : ''}
           </div></div></div>`).join('')
         : `<div class="empty"><strong>Nenhum contrato</strong>Crie o primeiro contrato para começar.</div>`}`;
     $('#novoCtr').onclick = () => abrirContratoModal(null);
     body.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => abrirContratoModal(contratos.find(x => x.id === b.dataset.edit)));
+    body.querySelectorAll('[data-catalogo]').forEach(b => b.onclick = () => abrirCatalogoPacModal(b.dataset.catalogo));
+  }
+
+  // Catálogo de planilhas do P.A.C. ajustável por contrato: a derivação
+  // por regime/classificação continua automática (sugestão); aqui o
+  // administrador do contrato pode INCLUIR uma planilha fora da derivação
+  // ou EXCLUIR uma sugerida que não se aplica à operação real — exclusão
+  // de planilha obrigatória pelo regime exige justificativa (o servidor
+  // valida isso; nunca silencioso). Lançamentos já feitos nunca são
+  // escondidos, mesmo numa planilha excluída depois.
+  async function abrirCatalogoPacModal(cid) {
+    openModal(`<div class="eyebrow">Catálogo de planilhas</div><h2>Planilhas do P.A.C.</h2>
+      <div id="catPacBody" class="muted">Carregando…</div>
+      <div class="actions"><button class="btn" onclick="closeModal()">Fechar</button></div>`);
+    let todas;
+    async function load() {
+      let r;
+      try { r = await DB.getPlanilhasDoContrato(cid); } catch (e) { return $('#catPacBody').innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+      todas = r.planilhas;
+      const origemLabel = { sugerida: 'Sugerida pelo regime', incluida: 'Incluída manualmente' };
+      $('#catPacBody').innerHTML = `<p class="muted" style="font-size:.78rem">A derivação por regime/classificação é automática — aqui você ajusta o que não se aplica à operação real ou inclui algo fora dela. Excluir não apaga lançamentos já feitos.</p>
+        ${todas.map(p => `<div class="card" style="box-shadow:none;border:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:10px">
+          <div style="min-width:0"><strong style="font-size:.85rem">${esc(p.nome)}</strong> <span class="chip neutral">${esc(origemLabel[p.origem] || p.origem)}</span>${p.obrigatoria ? ' <span class="chip aberta">obrigatória pelo regime</span>' : ''}
+            <div class="muted" style="font-size:.76rem">${p.total || 0} lançamento(s)</div></div>
+          <button type="button" class="btn danger sm" data-excluir="${p.id}">Excluir</button>
+        </div>`).join('')}
+        <div class="field" style="margin-top:12px"><span>Incluir outra planilha do catálogo</span>
+          <select id="catPacIncluirSel"><option value="">— escolha —</option>
+            ${(await DB.getPlanilhaTipos()).filter(t => !todas.some(p => p.id === t.id)).map(t => `<option value="${t.id}">${esc(t.nome)}</option>`).join('')}
+          </select>
+          <button type="button" class="btn ghost sm" id="catPacIncluirBtn" style="margin-top:6px">Incluir</button>
+        </div>`;
+      $('#catPacBody').querySelectorAll('[data-excluir]').forEach(b => b.onclick = async () => {
+        const p = todas.find(x => x.id === b.dataset.excluir);
+        if (!confirm(`Excluir "${p.nome}" do catálogo deste contrato? O histórico de lançamentos é preservado — só deixa de ser exigido daqui pra frente.`)) return;
+        let justificativa = null;
+        if (p.obrigatoria) {
+          justificativa = prompt(`"${p.nome}" é obrigatória pelo regime deste contrato. Informe uma justificativa para excluir:`);
+          if (!justificativa || !justificativa.trim()) return toast('Justificativa obrigatória para excluir uma planilha exigida pelo regime.', true);
+        }
+        try { await DB.configurarCatalogoPac(cid, { excluir: [{ id: p.id, justificativa }] }); toast('Planilha excluída do catálogo deste contrato.'); load(); }
+        catch (e) { toast(e.message, true); }
+      });
+      const incluirBtn = $('#catPacIncluirBtn');
+      if (incluirBtn) incluirBtn.onclick = async () => {
+        const id = $('#catPacIncluirSel').value; if (!id) return;
+        try { await DB.configurarCatalogoPac(cid, { incluir: [id] }); toast('Planilha incluída.'); load(); }
+        catch (e) { toast(e.message, true); }
+      };
+    }
+    load();
   }
 
   function abrirContratoModal(c) {

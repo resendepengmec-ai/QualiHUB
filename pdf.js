@@ -139,8 +139,31 @@
           return l.join('\n');
         }
         const parts = [];
-        (reg.campos || []).forEach(c => { const v = dd[c.key]; if (v !== undefined && v !== null && v !== '') parts.push(c.label + ': ' + v + (c.unidade ? ' ' + c.unidade : '')); });
+        (reg.campos || []).filter(c => c.tipo !== 'grupo').forEach(c => { const v = dd[c.key]; if (v !== undefined && v !== null && v !== '') parts.push(c.label + ': ' + v + (c.unidade ? ' ' + c.unidade : '')); });
+        if (dd.conformeGeral != null) parts.push('Conformidade geral: ' + (dd.conformeGeral ? 'conforme' : 'não conforme'));
         return parts.length ? parts.join('   ·   ') : '(sem dados)';
+      };
+      // Campo `grupo` (lista repetível — ex.: alimentos avaliados,
+      // descongelamentos, trocas de óleo) renderiza como TABELA, nunca como
+      // texto corrido. `reg.campos` já vem do schema certo pra ESTE
+      // registro (camposSnapshot/legado/atual — resolvido no servidor).
+      const tabelasGrupo = (reg) => {
+        const dd = reg.dados || {};
+        return (reg.campos || []).filter(c => c.tipo === 'grupo').map(c => {
+          const linhas = dd[c.key];
+          if (!Array.isArray(linhas) || !linhas.length) return null;
+          const temConforme = linhas.some(l => l.conforme != null || l.conformeStatus != null);
+          const cols = c.subcampos.map(sc => sc.label).concat(temConforme ? ['Conforme'] : []);
+          const body = [cols.map(t => ({ text: t, bold: true, fontSize: 7.5 }))].concat(linhas.map(l => {
+            const row = c.subcampos.map(sc => ({ text: (l[sc.key] != null && l[sc.key] !== '') ? String(l[sc.key]) + (sc.unidade ? ' ' + sc.unidade : '') : '—', fontSize: 7.5 }));
+            if (temConforme) {
+              const txt = l.conformeStatus === 'pendente' ? 'pendente' : (l.conforme === true || l.conformeStatus === 'conforme') ? 'sim' : (l.conforme === false || l.conformeStatus === 'nao_conforme') ? 'não' : '—';
+              row.push({ text: txt, fontSize: 7.5 });
+            }
+            return row;
+          }));
+          return { margin: [0, 2, 0, 6], table: { headerRows: 1, widths: cols.map(() => 'auto'), body }, layout: 'lightHorizontalLines' };
+        }).filter(Boolean);
       };
       const blocoReg = (reg, n) => {
         const meta = [reg.criadoEm ? new Date(reg.criadoEm).toLocaleString('pt-BR') : '-'];
@@ -148,6 +171,7 @@
         if (reg.aprovacao && reg.aprovacao.status) meta.push('aprovação: ' + reg.aprovacao.status);
         return { stack: [
           { text: [{ text: n + '. ', bold: true, color: '#2E6620' }, { text: valores(reg) }], fontSize: 9.5 },
+          ...tabelasGrupo(reg),
           { text: meta.join('  -  '), fontSize: 7.5, color: '#8a938e', margin: [0, 2, 0, 0] },
         ], unbreakable: true, margin: [0, 0, 0, 8] };
       };

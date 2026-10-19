@@ -53,22 +53,89 @@
     $('#pacBody').querySelectorAll('[data-hist]').forEach(b => b.onclick = () => abrirHistoricoPac(cid, tipos[b.dataset.hist]));
   }
 
-  function _campoInput(c) {
+  function _campoInput(c, valor) {
     const id = 'f_' + c.key;
-    if (c.tipo === 'numero') return `<input id="${id}" type="number" step="any">`;
-    if (c.tipo === 'data') return `<input id="${id}" type="date">`;
-    if (c.tipo === 'sim_nao') return `<select id="${id}"><option value="">—</option><option>Sim</option><option>Não</option></select>`;
-    if (c.tipo === 'cnc') return `<select id="${id}"><option value="">—</option><option value="C">C — Conforme</option><option value="NC">NC — Não conforme</option><option value="NA">NA — Não se aplica</option></select>`;
-    if (c.tipo === 'select') return `<select id="${id}"><option value="">—</option>${(c.opcoes || []).map(o => `<option>${o}</option>`).join('')}</select>`;
-    return `<input id="${id}">`;
+    const v = (valor != null && valor !== '') ? esc(String(valor)) : '';
+    if (c.tipo === 'numero') return `<input id="${id}" type="number" step="any" value="${v}">`;
+    if (c.tipo === 'data') return `<input id="${id}" type="date" value="${v}">`;
+    if (c.tipo === 'hora') return `<input id="${id}" type="time" value="${v}">`;
+    if (c.tipo === 'sim_nao') return `<select id="${id}"><option value="">—</option><option ${valor === 'Sim' ? 'selected' : ''}>Sim</option><option ${valor === 'Não' ? 'selected' : ''}>Não</option></select>`;
+    if (c.tipo === 'cnc') return `<select id="${id}"><option value="">—</option><option value="C" ${valor === 'C' ? 'selected' : ''}>C — Conforme</option><option value="NC" ${valor === 'NC' ? 'selected' : ''}>NC — Não conforme</option><option value="NA" ${valor === 'NA' ? 'selected' : ''}>NA — Não se aplica</option></select>`;
+    if (c.tipo === 'select') return `<select id="${id}"><option value="">—</option>${(c.opcoes || []).map(o => `<option ${o === valor ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
+    return `<input id="${id}" value="${v}">`;
+  }
+
+  // Campo `grupo`: lista repetível de linhas, cada uma com os subcampos do
+  // schema. Cada linha tem um índice ESTÁVEL (nunca reaproveitado depois
+  // de remover) pra não embaralhar inputs já preenchidos de outras linhas.
+  function _linhaGrupoHtml(c, i) {
+    return `<div class="card" style="box-shadow:none;border:1px solid var(--line);margin-top:6px;padding:10px" data-linha-grupo="${i}">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <strong style="font-size:.8rem">Linha ${i + 1}</strong>
+        <button type="button" class="btn ghost sm" data-rm-linha="${i}">Remover</button>
+      </div>
+      ${c.subcampos.map(sc => `<label class="field" style="margin:4px 0"><span>${esc(sc.label)}${sc.obrigatorio ? ' *' : ''}${sc.unidade ? ' (' + esc(sc.unidade) + ')' : ''}</span>${_campoInput({ ...sc, key: `${c.key}_${i}_${sc.key}` })}</label>`).join('')}
+    </div>`;
+  }
+  function _grupoContainerHtml(c) {
+    return `<div class="field">
+      <span>${esc(c.label)}${c.obrigatorio ? ' *' : ''}</span>
+      <div id="grupo_${c.key}_linhas"></div>
+      <button type="button" class="btn ghost sm" id="grupo_${c.key}_add" style="margin-top:6px">+ Adicionar linha</button>
+    </div>`;
+  }
+  function _wireGrupo(c) {
+    const lista = document.getElementById(`grupo_${c.key}_linhas`);
+    let proximoIndice = 0;
+    function addLinha() {
+      const atuais = lista.querySelectorAll('[data-linha-grupo]').length;
+      if (c.max && atuais >= c.max) return toast(`Máximo de ${c.max} linha(s) em "${c.label}".`, true);
+      const i = proximoIndice++;
+      lista.insertAdjacentHTML('beforeend', _linhaGrupoHtml(c, i));
+      lista.querySelector(`[data-rm-linha="${i}"]`).onclick = () => lista.querySelector(`[data-linha-grupo="${i}"]`).remove();
+    }
+    for (let k = 0; k < (c.min || 1); k++) addLinha();
+    document.getElementById(`grupo_${c.key}_add`).onclick = addLinha;
+  }
+  function _coletarDadosGrupo(c) {
+    const lista = document.getElementById(`grupo_${c.key}_linhas`);
+    return [...lista.querySelectorAll('[data-linha-grupo]')].map(linhaEl => {
+      const i = linhaEl.dataset.linhaGrupo;
+      const obj = {};
+      c.subcampos.forEach(sc => { const el = document.getElementById(`f_${c.key}_${i}_${sc.key}`); obj[sc.key] = el ? el.value : ''; });
+      return obj;
+    });
+  }
+  // Validação do lado do cliente — conveniência (foca o usuário mais rápido
+  // que esperar o 400 do servidor), nunca a que vale de verdade. Mesma
+  // regra de "vazio ≠ zero" e "linha vazia é ignorada" do servidor.
+  function _validarClienteDados(tipo, dados) {
+    for (const c of tipo.campos) {
+      if (c.tipo === 'grupo') {
+        const linhas = (dados[c.key] || []).filter(l => c.subcampos.some(sc => l[sc.key] !== '' && l[sc.key] != null));
+        if (c.obrigatorio && linhas.length < (c.min || 1)) return `${c.label}: informe ao menos ${c.min || 1} linha(s).`;
+        for (const l of linhas) for (const sc of c.subcampos) if (sc.obrigatorio && (l[sc.key] === '' || l[sc.key] == null)) return `${c.label}: informe ${sc.label}.`;
+      } else if (c.obrigatorio && (dados[c.key] === '' || dados[c.key] == null)) {
+        return `Informe ${c.label}.`;
+      }
+    }
+    return null;
   }
   function abrirRegistroPac(cid, tipo) {
+    const ctrl = tipo.descricaoControle;
     openModal(`<div class="eyebrow">${esc(tipo.periodicidade || '')}</div><h2>${esc(tipo.nome)}</h2>
-      ${tipo.campos.map(c => `<label class="field"><span>${esc(c.label)}${c.unidade ? ' (' + esc(c.unidade) + ')' : ''}</span>${_campoInput(c)}</label>`).join('')}
+      ${ctrl ? `<div class="muted" style="font-size:.78rem;margin-bottom:10px;line-height:1.5">
+        ${ctrl.controle ? `<div><b>Controle:</b> ${esc(ctrl.controle)}</div>` : ''}
+        ${ctrl.como ? `<div><b>Como:</b> ${esc(ctrl.como)}</div>` : ''}
+        ${ctrl.quando ? `<div><b>Quando:</b> ${esc(ctrl.quando)}</div>` : ''}
+        ${ctrl.referencia ? `<div><b>Referência:</b> ${esc(ctrl.referencia)}</div>` : ''}
+      </div>` : ''}
+      ${tipo.campos.map(c => c.tipo === 'grupo' ? _grupoContainerHtml(c) : `<label class="field"><span>${esc(c.label)}${c.obrigatorio ? ' *' : ''}${c.unidade ? ' (' + esc(c.unidade) + ')' : ''}</span>${_campoInput(c)}</label>`).join('')}
       <label class="field"><span>Fotos (até 3, com data/hora e localização)</span><input type="file" id="pacFotos" accept="image/*" multiple></label>
       <div class="fotos" id="pacPrev"></div>
       <div class="actions"><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="pacOk">Registrar</button></div>`);
     pedirLocalizacao();
+    tipo.campos.filter(c => c.tipo === 'grupo').forEach(_wireGrupo);
     let fotos = [];
     $('#pacFotos').onchange = async (e) => {
       toast('Processando foto…');
@@ -78,12 +145,45 @@
       e.target.value = '';
     };
     $('#pacOk').onclick = async () => {
-      const dados = {}; tipo.campos.forEach(c => { const el = document.getElementById('f_' + c.key); if (el) dados[c.key] = el.value; });
+      const dados = {};
+      tipo.campos.forEach(c => { dados[c.key] = c.tipo === 'grupo' ? _coletarDadosGrupo(c) : (document.getElementById('f_' + c.key)?.value ?? ''); });
+      const erroCliente = _validarClienteDados(tipo, dados);
+      if (erroCliente) return toast(erroCliente, true);
       $('#pacOk').disabled = true;
       try { await DB.criarRegistroPac({ contratoId: cid, planilhaTipoId: tipo.id, dados, fotos });
         closeModal(); toast('Registro lançado — aguardando aprovação do gestor.'); }
       catch (e) { toast(e.message, true); $('#pacOk').disabled = false; }
     };
+  }
+  // Schema ANTIGO (plano) das 3 planilhas enriquecidas com campo `grupo` —
+  // única fonte de verdade: backend `db.js: LEGACY_CAMPOS_V0`. Usado SÓ
+  // pra renderizar (nunca validar) registros lançados antes dessa mudança,
+  // que não têm `camposSnapshot`.
+  const _LEGACY_CAMPOS_V0 = {
+    'pt-temp-refeicoes': [ {key:'alimento',label:'Alimento avaliado'}, {key:'tempProducao',label:'Temp. produção',unidade:'°C'}, {key:'horarioProducao',label:'Horário final do preparo'}, {key:'tempAcond',label:'Temp. acondicionamento',unidade:'°C'}, {key:'tempTransporte',label:'Temp. transporte',unidade:'°C'}, {key:'horarioExp',label:'Horário expedição'}, {key:'tempExp',label:'Temp. expedição',unidade:'°C'}, {key:'conforme',label:'Conforme?'}, {key:'responsavel',label:'Responsável'} ],
+    'pt-descongelamento': [ {key:'produto',label:'Produto'}, {key:'kg',label:'Quantidade',unidade:'kg'}, {key:'tempInicial',label:'Temp. inicial',unidade:'°C'}, {key:'horarioInicio',label:'Horário início'}, {key:'tempFinal',label:'Temp. final',unidade:'°C'}, {key:'horarioFim',label:'Horário fim'} ],
+    'pt-troca-oleo': [ {key:'fritadeira',label:'Equipamento/Fritadeira'}, {key:'oleoUtilizado',label:'Óleo utilizado'}, {key:'volumeL',label:'Volume',unidade:'L'}, {key:'dataUltimaTroca',label:'Data da última troca'}, {key:'motivo',label:'Motivo da troca'}, {key:'aspecto',label:'Aspecto do óleo'}, {key:'responsavel',label:'Responsável'} ],
+  };
+  function _camposParaRenderizar(rg, tipo) {
+    return rg.camposSnapshot || _LEGACY_CAMPOS_V0[rg.planilhaTipoId] || tipo.campos;
+  }
+  function _tabelaGrupoHtml(c, linhas, rg) {
+    if (!linhas || !linhas.length) return '';
+    const subcamposTardios = (c.subcampos || []).filter(sc => sc.faseTardia);
+    const temConforme = linhas.some(l => l.conforme != null || l.conformeStatus != null);
+    return `<table style="width:100%;font-size:.76rem;border-collapse:collapse;margin-top:4px">
+      <thead><tr>${c.subcampos.map(sc => `<th style="text-align:left;border-bottom:1px solid var(--line);padding:2px 6px">${esc(sc.label)}</th>`).join('')}${temConforme ? '<th style="border-bottom:1px solid var(--line);padding:2px 6px">Conforme</th>' : ''}${subcamposTardios.length ? '<th style="border-bottom:1px solid var(--line);padding:2px 6px"></th>' : ''}</tr></thead>
+      <tbody>${linhas.map((l, i) => {
+        const cols = c.subcampos.map(sc => `<td style="padding:2px 6px;border-bottom:1px solid var(--line)">${(l[sc.key] != null && l[sc.key] !== '') ? esc(String(l[sc.key])) + (sc.unidade ? ' ' + sc.unidade : '') : '—'}</td>`).join('');
+        const confCel = temConforme ? `<td style="padding:2px 6px;border-bottom:1px solid var(--line)">${
+          l.conformeStatus === 'pendente' ? '<span class="chip aberta">pendente</span>'
+          : l.conforme === true || l.conformeStatus === 'conforme' ? '<span class="chip ok">sim</span>'
+          : l.conforme === false || l.conformeStatus === 'nao_conforme' ? '<span class="chip atraso">não</span>' : '—'}</td>` : '';
+        const pendenteTardio = subcamposTardios.length && subcamposTardios.every(sc => l[sc.key] == null || l[sc.key] === '');
+        const btnCel = subcamposTardios.length ? `<td style="padding:2px 6px;border-bottom:1px solid var(--line)">${(rg.estado === 'pendente' && pendenteTardio) ? `<button type="button" class="btn ghost sm" data-completar="${rg.id}:${c.key}:${i}">Completar</button>` : ''}</td>` : '';
+        return `<tr>${cols}${confCel}${btnCel}</tr>`;
+      }).join('')}</tbody>
+    </table>`;
   }
   async function abrirHistoricoPac(cid, tipo) {
     openModal(`<h2>${esc(tipo.nome)}</h2><p class="muted" style="font-size:.82rem;margin:.2rem 0 1rem">${esc(tipo.periodicidade || '')}</p><div id="pacHist" class="muted">Carregando…</div>`);
@@ -94,14 +194,22 @@
       $('#pacHist').innerHTML = regs.length ? regs.map(rg => {
         const chip = rg.estado === 'aprovado' ? '<span class="chip ok">Aprovado</span>'
           : rg.estado === 'reprovado' ? '<span class="chip atraso">Reprovado</span>' : '<span class="chip aberta">Pendente</span>';
-        let corpo;
+        let corpo, naoConforme = false;
         if (rg.dados && Array.isArray(rg.dados.leituras)) { // temperatura (manual ou IoT)
           const conf = rg.dados.conformeGeral ? '<span class="chip ok">Conforme</span>' : '<span class="chip atraso">Não conforme</span>';
           const orig = `<span class="chip neutral">${rg.origem === 'iot' ? 'IoT' : 'Manual'}</span>`;
           corpo = `<div style="margin-bottom:4px">${conf} ${orig}</div>` + rg.dados.leituras.map(l =>
             `<div style="font-size:.85rem;margin-top:2px">${esc(l.nome)}: <b style="color:${l.conforme ? 'var(--ok)' : 'var(--danger)'}">${esc(l.valor)}°C</b>${(l.limiteMin != null || l.limiteMax != null) ? ` <span class="muted">(faixa ${l.limiteMin ?? '-∞'}–${l.limiteMax ?? '+∞'}°C)</span>` : ''}</div>`).join('');
+          naoConforme = rg.dados.conformeGeral === false;
         } else {
-          corpo = tipo.campos.map(c => (rg.dados && rg.dados[c.key] != null && rg.dados[c.key] !== '') ? `${esc(c.label)}: <b>${esc(rg.dados[c.key])}</b>` : null).filter(Boolean).join(' · ') || '<span class="muted">sem dados</span>';
+          const campos = _camposParaRenderizar(rg, tipo);
+          const escalares = campos.filter(c => c.tipo !== 'grupo');
+          const gruposDoTipo = campos.filter(c => c.tipo === 'grupo');
+          const confChip = rg.dados && rg.dados.conformeGeral != null ? (rg.dados.conformeGeral ? '<span class="chip ok">Conforme</span>' : '<span class="chip atraso">Não conforme</span>') : '';
+          const linhaEscalares = escalares.map(c => (rg.dados && rg.dados[c.key] != null && rg.dados[c.key] !== '') ? `${esc(c.label)}: <b>${esc(rg.dados[c.key])}</b>` : null).filter(Boolean).join(' · ');
+          const blocosGrupo = gruposDoTipo.map(c => { const linhas = rg.dados?.[c.key]; return Array.isArray(linhas) && linhas.length ? `<div style="margin-top:6px"><b>${esc(c.label)}</b>${_tabelaGrupoHtml(c, linhas, rg)}</div>` : ''; }).join('');
+          corpo = (confChip ? `<div style="margin-bottom:4px">${confChip}</div>` : '') + (linhaEscalares || (gruposDoTipo.length ? '' : '<span class="muted">sem dados</span>')) + blocosGrupo;
+          naoConforme = rg.dados && rg.dados.conformeGeral === false;
         }
         const fotos = _renderFotosImgs(rg.fotos, 'pac', rg.id, 'fotos');
         return `<div class="card" style="box-shadow:none;border:1px solid var(--line)">
@@ -110,7 +218,10 @@
           <div class="muted" style="font-size:.78rem;margin-top:4px">por ${esc(rg.criadoPorNome || rg.criadoPor || '—')}</div>
           ${fotos ? `<div class="fotos">${fotos}</div>` : ''}
           ${rg.decisao ? `<div class="muted" style="font-size:.78rem;margin-top:4px">${rg.estado === 'aprovado' ? 'Aprovado' : 'Reprovado'} por ${esc(rg.decisao.porNome || rg.decisao.por)}${rg.decisao.observacao ? ' — ' + esc(rg.decisao.observacao) : ''}</div>` : ''}
-          ${(podeDecidir && rg.estado === 'pendente') ? `<div style="margin-top:8px;display:flex;gap:8px"><button class="btn primary sm" data-ap="${rg.id}">Aprovar</button><button class="btn danger sm" data-rp="${rg.id}">Reprovar</button></div>` : ''}
+          <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+            ${(podeDecidir && rg.estado === 'pendente') ? `<button class="btn primary sm" data-ap="${rg.id}">Aprovar</button><button class="btn danger sm" data-rp="${rg.id}">Reprovar</button>` : ''}
+            ${naoConforme ? `<button class="btn ghost sm" data-gerar-oc="${rg.id}">Gerar ocorrência</button>` : ''}
+          </div>
         </div>`;
       }).join('') : `<div class="empty"><strong>Nenhum registro</strong>Lance o primeiro em “Novo registro”.</div>`;
       $('#pacHist').querySelectorAll('[data-ap]').forEach(b => b.onclick = async () => {
@@ -119,6 +230,30 @@
       $('#pacHist').querySelectorAll('[data-rp]').forEach(b => b.onclick = async () => {
         const obs = prompt('Motivo da reprovação (opcional):') || '';
         try { await DB.decidirRegistroPac(b.dataset.rp, false, obs); toast('Reprovado.'); load(); } catch (e) { toast(e.message, true); }
+      });
+      // Gera uma ocorrência vinculada a este registro não conforme — não
+      // duplica o módulo de ação corretiva, só aponta pra ele (pacRegistroId).
+      $('#pacHist').querySelectorAll('[data-gerar-oc]').forEach(b => b.onclick = async () => {
+        const desc = prompt('Descreva a não conformidade:', `Não conformidade em "${tipo.nome}"`);
+        if (!desc) return;
+        try { await DB.criarOcorrencia({ contratoId: cid, descricao: desc, pacRegistroId: b.dataset.gerarOc }); toast('Ocorrência registrada e vinculada a este lançamento.'); }
+        catch (e) { toast(e.message, true); }
+      });
+      // Completa subcampos de fase tardia (ex.: fim do descongelamento) de
+      // uma linha já lançada.
+      $('#pacHist').querySelectorAll('[data-completar]').forEach(b => b.onclick = () => {
+        const [regId, campoKey, indice] = b.dataset.completar.split(':');
+        const campo = tipo.campos.find(c => c.key === campoKey);
+        const subcamposTardios = (campo?.subcampos || []).filter(sc => sc.faseTardia);
+        openModal(`<h2>Completar</h2>
+          ${subcamposTardios.map(sc => `<label class="field"><span>${esc(sc.label)}${sc.unidade ? ' (' + esc(sc.unidade) + ')' : ''}</span>${_campoInput({ ...sc, key: 'completar_' + sc.key })}</label>`).join('')}
+          <div class="actions"><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="completarOk">Salvar</button></div>`);
+        $('#completarOk').onclick = async () => {
+          const valores = {}; subcamposTardios.forEach(sc => { const el = document.getElementById('f_completar_' + sc.key); if (el && el.value !== '') valores[sc.key] = el.value; });
+          if (!Object.keys(valores).length) return toast('Informe ao menos um valor.', true);
+          try { await DB.completarGrupoPac(regId, campoKey, Number(indice), valores); closeModal(); toast('Completado.'); abrirHistoricoPac(cid, tipo); }
+          catch (e) { toast(e.message, true); }
+        };
       });
     }
     load();

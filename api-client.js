@@ -234,6 +234,8 @@ const DB = {
   criarRegistroPac:       (r)       => API.post('/pac', { registro: r }),
   decidirRegistroPac:     (id, aprovado, observacao) => API.patch(`/pac/${id}/decidir`, { aprovado, observacao }),
   getFotosPac:            (id)      => API.get(`/pac/${id}/fotos`),
+  completarGrupoPac:      (regId, campoKey, indice, valores) => API.patch(`/pac/${regId}/grupo/${campoKey}/${indice}/completar`, { valores }),
+  configurarCatalogoPac:  (cid, { incluir, excluir }) => API.patch(`/contratos/${cid}/planilhas-catalogo`, { incluir, excluir }),
 
   // Equipamentos / controle de temperatura
   getEquipamentos:        (cid)     => API.get(`/contratos/${cid}/equipamentos`),
