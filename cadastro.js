@@ -62,9 +62,24 @@
     });
   }
 
+  // Sugestão de setores típicos por classificação do contrato — só
+  // preenchimento inicial no formulário (nunca grava nada sozinho no
+  // servidor; o usuário ainda precisa clicar "Salvar"). Ajustável/removível
+  // livremente, igual ao catálogo de planilhas do P.A.C.
+  const SETORES_SUGERIDOS_POR_CLASSIFICACAO = {
+    restaurante: ['Cozinha', 'Câmara fria', 'Estoque seco', 'Área de manipulação', 'Salão/Expedição', 'Vestiário', 'Área de lixo'],
+    lanchonete: ['Cozinha', 'Câmara fria/Freezer', 'Estoque', 'Balcão de atendimento', 'Área de lixo'],
+    padaria: ['Produção/Forno', 'Câmara fria', 'Estoque seco', 'Vitrine/Balcão', 'Vestiário', 'Área de lixo'],
+    supermercado: ['Câmara fria', 'Freezer', 'Estoque seco', 'Área de manipulação', 'Frente de loja', 'Área de lixo'],
+    acougue: ['Câmara fria', 'Sala de desossa', 'Estoque', 'Balcão de atendimento', 'Área de lixo'],
+    salgadeira: ['Cozinha/Produção', 'Câmara fria', 'Estoque seco', 'Expedição', 'Vestiário', 'Área de lixo'],
+    distribuidora: ['Câmara fria', 'Estoque seco', 'Doca de carga/descarga', 'Área administrativa'],
+  };
   function abrirEstModal(cid, e) {
     const ed = !!e;
     const coord = (ed && e.lat != null && e.lng != null) ? `${e.lat}, ${e.lng}` : '';
+    const classificacao = (contratos.find(c => c.id === cid) || {}).classificacao || null;
+    const sugestoes = classificacao && SETORES_SUGERIDOS_POR_CLASSIFICACAO[classificacao];
     openModal(`<h2>${ed ? 'Editar' : 'Novo'} estabelecimento</h2>
       <div class="row"><label class="field"><span>Nome</span><input id="eNome" value="${ed ? esc(e.nome) : ''}"></label>
         <label class="field"><span>CNPJ</span><input id="eCnpj" value="${ed ? esc(e.cnpj || '') : ''}"></label></div>
@@ -74,12 +89,41 @@
       <p class="muted" style="font-size:.76rem;margin-top:-6px">No Google Maps, clique com o botão direito no ponto e clique nas coordenadas para copiar; cole aqui.</p>
       <label class="field"><span>Foto do estabelecimento (opcional)</span><input type="file" id="eFoto" accept="image/*"></label>
       <div id="eFotoPrev">${ed && e.foto ? `<img src="${esc(e.foto)}" style="max-height:80px;border-radius:8px;border:1px solid var(--line)">` : ''}</div>
+      <div class="field">
+        <span>Setores (opcional — usado pra marcar o local de uma não conformidade)</span>
+        <div id="eSetoresLista"></div>
+        <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
+          <button type="button" class="btn ghost sm" id="eSetorAdd">+ Adicionar setor</button>
+          ${sugestoes ? `<button type="button" class="btn ghost sm" id="eSetorSugerir">Usar sugestões de ${esc(CLASSIFICACAO_LABEL[classificacao] || classificacao)}</button>` : ''}
+        </div>
+      </div>
       <div class="actions"><button class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary" id="eOk">Salvar</button></div>`);
     let foto = ed ? (e.foto || null) : null;
     $('#eFoto').onchange = async (ev) => {
       if (!ev.target.files[0]) return;
       try { foto = await _lerLogo(ev.target.files[0]); $('#eFotoPrev').innerHTML = `<img src="${esc(foto)}" style="max-height:80px;border-radius:8px;border:1px solid var(--line)">`; }
       catch (err) { toast(err.message, true); }
+    };
+    // Setores: cada linha guarda o id ORIGINAL (se veio de um setor já
+    // existente) em data-setor-id — renomear preserva o id (ocorrências
+    // antigas continuam resolvendo pro nome atual); linha nova (botão
+    // "+ Adicionar" ou "sugestões") não tem id, o servidor gera o dele.
+    const listaSetores = $('#eSetoresLista');
+    let proximoIdxSetor = 0;
+    function addLinhaSetor(nome, idOriginal) {
+      const i = proximoIdxSetor++;
+      listaSetores.insertAdjacentHTML('beforeend', `<div class="row" data-linha-setor="${i}" data-setor-id="${idOriginal ? esc(idOriginal) : ''}" style="margin:4px 0;align-items:center">
+        <input id="eSetor_${i}" value="${esc(nome || '')}" placeholder="Ex.: Cozinha" style="flex:1">
+        <button type="button" class="btn ghost sm" data-rm-setor="${i}">Remover</button>
+      </div>`);
+      listaSetores.querySelector(`[data-rm-setor="${i}"]`).onclick = () => listaSetores.querySelector(`[data-linha-setor="${i}"]`).remove();
+    }
+    (ed && e.setores || []).forEach(s => addLinhaSetor(s.nome, s.id));
+    $('#eSetorAdd').onclick = () => addLinhaSetor('');
+    const btnSugerir = $('#eSetorSugerir');
+    if (btnSugerir) btnSugerir.onclick = () => {
+      const existentes = new Set([...listaSetores.querySelectorAll('input')].map(i => i.value.trim().toLowerCase()).filter(Boolean));
+      sugestoes.forEach(nome => { if (!existentes.has(nome.toLowerCase())) { addLinhaSetor(nome); existentes.add(nome.toLowerCase()); } });
     };
     $('#eOk').onclick = async () => {
       const nome = $('#eNome').value.trim(); if (!nome) return toast('Informe o nome.', true);
@@ -91,7 +135,15 @@
           return toast('Coordenadas inválidas. Use: -18.16572, -47.94220', true);
         lat = p[0]; lng = p[1];
       }
-      const payload = { nome, cnpj: $('#eCnpj').value.trim(), endereco: $('#eEnd').value.trim(), lat, lng, foto };
+      const setores = [...listaSetores.querySelectorAll('[data-linha-setor]')].map(linhaEl => {
+        const idx = linhaEl.dataset.linhaSetor;
+        const nomeSetor = (document.getElementById(`eSetor_${idx}`)?.value || '').trim();
+        if (!nomeSetor) return null;
+        const obj = { nome: nomeSetor };
+        if (linhaEl.dataset.setorId) obj.id = linhaEl.dataset.setorId;
+        return obj;
+      }).filter(Boolean);
+      const payload = { nome, cnpj: $('#eCnpj').value.trim(), endereco: $('#eEnd').value.trim(), lat, lng, foto, setores };
       if (ed) payload.id = e.id; else payload.contratoId = cid;
       try { await DB.saveEstabelecimento(payload); closeModal(); toast('Estabelecimento salvo.'); cadEstabelecimentos(); }
       catch (err) { toast(err.message, true); }

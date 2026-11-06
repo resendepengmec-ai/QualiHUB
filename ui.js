@@ -140,6 +140,33 @@
     return el ? (el.value || null) : null;
   }
 
+  // Setor da não conformidade (cozinha, câmara fria, estoque etc.) — mesmo
+  // princípio 0/1/2+ do campoEstabelecimento, mas depende de QUAL
+  // estabelecimento está selecionado, então recebe a lista completa
+  // (`ests`, com `.setores[]`) já carregada pelo chamador — nunca lê de um
+  // cache global, porque a lista enxuta de `contratos[].estabelecimentos`
+  // não traz setores (de propósito, pra não crescer o payload do boot).
+  function _setoresDoEstabelecimento(ests, estId) {
+    const est = (ests || []).find(e => e.id === estId);
+    return (est && est.setores) || [];
+  }
+  function campoSetor(ests, estIdSelecionado, setorIdSelecionado, idAttr) {
+    const setores = _setoresDoEstabelecimento(ests, estIdSelecionado);
+    if (!setores.length) return '';
+    if (setores.length === 1) {
+      return `<input type="hidden" id="${idAttr}" value="${esc(setores[0].id)}">
+        <label class="field"><span>Setor</span><input value="${esc(setores[0].nome)}" disabled></label>`;
+    }
+    return `<label class="field"><span>Setor</span><select id="${idAttr}">
+      <option value="">— não se aplica a um setor específico —</option>
+      ${setores.map(s => `<option value="${esc(s.id)}" ${setorIdSelecionado === s.id ? 'selected' : ''}>${esc(s.nome)}</option>`).join('')}
+    </select></label>`;
+  }
+  function lerSetor(idAttr, root) {
+    const el = (root || document).querySelector('#' + idAttr);
+    return el ? (el.value || null) : null;
+  }
+
   // ── Etapa 2 — aviso de troca de contrato + "formulário sujo" ───────
   // Qualquer campo preenchido em #view ou dentro do #modal marca a tela como
   // "com dados não salvos" (exceto o próprio seletor de contrato, na

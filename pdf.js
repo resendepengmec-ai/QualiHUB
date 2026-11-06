@@ -281,6 +281,7 @@
         const linha = [];
         if (o.contratoNumero) linha.push('Contrato ' + o.contratoNumero);
         if (o.estabelecimentoNome) linha.push(o.estabelecimentoNome);
+        if (o.setorNome) linha.push('Setor: ' + o.setorNome);
         linha.push('Gravidade: ' + (o.gravidade || '-'));
         linha.push(st.label);
         linha.push('Prazo: ' + (o.prazoCorrecao ? fmtDate(o.prazoCorrecao) : '-'));
